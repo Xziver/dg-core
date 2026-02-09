@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models for dg-engine."""
+"""SQLAlchemy ORM models for dg-core."""
 
 from __future__ import annotations
 

@@ -10,7 +10,7 @@ async def test_health(client: AsyncClient):
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "ok"
-    assert data["engine"] == "dg-engine"
+    assert data["engine"] == "dg-core"
 
 
 @pytest.mark.asyncio

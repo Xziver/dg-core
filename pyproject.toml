@@ -1,5 +1,5 @@
 [project]
-name = "dg-engine"
+name = "dg-core"
 version = "0.1.0"
 description = "Digital Ghost World Engine - TRPG game engine service"
 requires-python = ">=3.11"

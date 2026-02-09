@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Database
-    database_url: str = "sqlite+aiosqlite:///./dg_engine.db"
+    database_url: str = "sqlite+aiosqlite:///./dg_core.db"
 
     # LLM
     llm_provider: str = "mock"  # "openai" | "anthropic" | "mock"
