@@ -2,7 +2,7 @@
 name = "dg-core"
 version = "0.1.0"
 description = "Digital Ghost World Engine - TRPG game engine service"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
@@ -39,5 +39,5 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 100

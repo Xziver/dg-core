@@ -1,11 +1,17 @@
 """dg-core — FastAPI application entry point."""
 
 from contextlib import asynccontextmanager
+from importlib.metadata import version, PackageNotFoundError
 
 from fastapi import FastAPI
 
 from app.api import admin, bot, web
 from app.infra.db import init_db
+
+try:
+    __version__ = version("dg-core")
+except PackageNotFoundError:
+    __version__ = "0.0.0-dev"
 
 
 @asynccontextmanager
@@ -18,7 +24,7 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
 app = FastAPI(
     title="dg-core",
     description="Digital Ghost World Engine — TRPG game engine service",
-    version="0.1.0",
+    version=__version__,
     lifespan=lifespan,
 )
 
@@ -29,4 +35,4 @@ app.include_router(web.router)
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "engine": "dg-core", "version": "0.1.0"}
+    return {"status": "ok", "engine": "dg-core", "version": __version__}
