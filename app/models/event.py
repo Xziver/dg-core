@@ -10,11 +10,15 @@ from pydantic import BaseModel, Field
 
 
 class EventType(str, Enum):
-    # System events
-    SESSION_START = "session_start"
-    SESSION_END = "session_end"
+    # Game lifecycle events
+    GAME_START = "game_start"
+    GAME_END = "game_end"
     PLAYER_JOIN = "player_join"
     PLAYER_LEAVE = "player_leave"
+
+    # Session lifecycle events (play sessions)
+    SESSION_START = "session_start"
+    SESSION_END = "session_end"
 
     # Action events
     SKILL_CHECK = "skill_check"
@@ -34,17 +38,18 @@ class EventType(str, Enum):
     # State events
     APPLY_FRAGMENT = "apply_fragment"
     HP_CHANGE = "hp_change"
-    SECTOR_TRANSITION = "sector_transition"
+    REGION_TRANSITION = "region_transition"
+    LOCATION_TRANSITION = "location_transition"
 
 
 # --- Payload models ---
 
-class SessionStartPayload(BaseModel):
-    event_type: Literal["session_start"] = "session_start"
+class GameStartPayload(BaseModel):
+    event_type: Literal["game_start"] = "game_start"
 
 
-class SessionEndPayload(BaseModel):
-    event_type: Literal["session_end"] = "session_end"
+class GameEndPayload(BaseModel):
+    event_type: Literal["game_end"] = "game_end"
 
 
 class PlayerJoinPayload(BaseModel):
@@ -54,6 +59,15 @@ class PlayerJoinPayload(BaseModel):
 
 class PlayerLeavePayload(BaseModel):
     event_type: Literal["player_leave"] = "player_leave"
+
+
+class SessionStartPayload(BaseModel):
+    event_type: Literal["session_start"] = "session_start"
+    region_id: str | None = None
+
+
+class SessionEndPayload(BaseModel):
+    event_type: Literal["session_end"] = "session_end"
 
 
 class SkillCheckPayload(BaseModel):
@@ -124,17 +138,24 @@ class HPChangePayload(BaseModel):
     reason: str = ""
 
 
-class SectorTransitionPayload(BaseModel):
-    event_type: Literal["sector_transition"] = "sector_transition"
-    target_sector: str
+class RegionTransitionPayload(BaseModel):
+    event_type: Literal["region_transition"] = "region_transition"
+    target_region_id: str
+
+
+class LocationTransitionPayload(BaseModel):
+    event_type: Literal["location_transition"] = "location_transition"
+    target_location_id: str
 
 
 EventPayload = Annotated[
     Union[
-        SessionStartPayload,
-        SessionEndPayload,
+        GameStartPayload,
+        GameEndPayload,
         PlayerJoinPayload,
         PlayerLeavePayload,
+        SessionStartPayload,
+        SessionEndPayload,
         SkillCheckPayload,
         ExplorePayload,
         AttackPayload,
@@ -146,7 +167,8 @@ EventPayload = Annotated[
         AttemptSeizePayload,
         ApplyFragmentPayload,
         HPChangePayload,
-        SectorTransitionPayload,
+        RegionTransitionPayload,
+        LocationTransitionPayload,
     ],
     Field(discriminator="event_type"),
 ]
@@ -155,7 +177,8 @@ EventPayload = Annotated[
 class GameEvent(BaseModel):
     """Top-level event submitted by a client to the engine."""
 
-    session_id: str
-    player_id: str
+    game_id: str
+    session_id: str | None = None
+    user_id: str
     payload: EventPayload
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

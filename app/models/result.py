@@ -17,7 +17,7 @@ class DiceRollResult(BaseModel):
 
 
 class StateChange(BaseModel):
-    entity_type: str  # "ghost", "patient", "world_state", "session"
+    entity_type: str  # "ghost", "patient", "game", "game_player", "print_ability"
     entity_id: str
     field: str
     old_value: str | None = None

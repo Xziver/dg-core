@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from app.domain.context import build_context
 from app.models.result import DiceRollResult, EngineResult
 from app.modules.llm.client import ask_llm_safe
 from app.modules.llm.prompts import (
@@ -15,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 async def narrate_skill_check(
     db: AsyncSession,
-    session_id: str,
+    game_id: str,
     character_name: str,
     color: str,
     roll_result: DiceRollResult,
@@ -39,7 +38,7 @@ async def narrate_skill_check(
 
 async def narrate_combat(
     db: AsyncSession,
-    session_id: str,
+    game_id: str,
     attacker_name: str,
     target_name: str,
     color_used: str,
@@ -62,14 +61,14 @@ async def narrate_combat(
 
 async def enrich_result_with_narration(
     db: AsyncSession,
-    session_id: str,
+    game_id: str,
     result: EngineResult,
     **kwargs: str,
 ) -> EngineResult:
     """Add narrative text to an existing EngineResult."""
     if result.event_type == "skill_check" and result.rolls:
         result.narrative = await narrate_skill_check(
-            db, session_id,
+            db, game_id,
             character_name=kwargs.get("character_name", "未知角色"),
             color=result.data.get("color", "C"),
             roll_result=result.rolls[0],
@@ -77,7 +76,7 @@ async def enrich_result_with_narration(
         )
     elif result.event_type == "attack" and result.rolls:
         result.narrative = await narrate_combat(
-            db, session_id,
+            db, game_id,
             attacker_name=kwargs.get("attacker_name", "攻击者"),
             target_name=kwargs.get("target_name", "目标"),
             color_used=result.data.get("color_used", "C"),

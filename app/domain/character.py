@@ -14,8 +14,8 @@ from app.models.db_models import ColorFragment, Ghost, Patient, PrintAbility
 
 async def create_patient(
     db: AsyncSession,
-    player_id: str,
-    session_id: str,
+    user_id: str,
+    game_id: str,
     name: str,
     soul_color: str,
     gender: str | None = None,
@@ -26,8 +26,8 @@ async def create_patient(
     ideal_projection: str | None = None,
 ) -> Patient:
     patient = Patient(
-        player_id=player_id,
-        session_id=session_id,
+        user_id=user_id,
+        game_id=game_id,
         name=name,
         soul_color=soul_color.upper(),
         gender=gender,
@@ -69,8 +69,8 @@ def generate_swap_file(patient: Patient) -> dict:
 async def create_ghost(
     db: AsyncSession,
     patient_id: str,
-    creator_player_id: str,
-    session_id: str,
+    creator_user_id: str,
+    game_id: str,
     name: str,
     soul_color: str,
     appearance: str | None = None,
@@ -83,8 +83,8 @@ async def create_ghost(
 
     ghost = Ghost(
         patient_id=patient_id,
-        creator_player_id=creator_player_id,
-        session_id=session_id,
+        creator_user_id=creator_user_id,
+        game_id=game_id,
         name=name,
         appearance=appearance,
         personality=personality,
@@ -102,8 +102,8 @@ async def get_ghost(db: AsyncSession, ghost_id: str) -> Ghost | None:
     return result.scalar_one_or_none()
 
 
-async def get_ghosts_in_session(db: AsyncSession, session_id: str) -> list[Ghost]:
-    result = await db.execute(select(Ghost).where(Ghost.session_id == session_id))
+async def get_ghosts_in_game(db: AsyncSession, game_id: str) -> list[Ghost]:
+    result = await db.execute(select(Ghost).where(Ghost.game_id == game_id))
     return list(result.scalars().all())
 
 
@@ -133,7 +133,7 @@ async def apply_color_fragment(
     ghost.cmyk_json = json.dumps(cmyk)
 
     fragment = ColorFragment(
-        session_id=ghost.session_id,
+        game_id=ghost.game_id,
         holder_ghost_id=ghost.id,
         color=color.upper(),
         value=float(value),

@@ -1,6 +1,5 @@
 """Shared test fixtures."""
 
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -48,3 +47,25 @@ async def client(db_engine):
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
+
+
+async def register_user(
+    client: AsyncClient,
+    display_name: str = "TestUser",
+    platform: str = "test",
+    platform_uid: str = "test_001",
+) -> dict:
+    """Register a user and return dict with user_id, api_key, headers."""
+    resp = await client.post("/api/auth/register", json={
+        "display_name": display_name,
+        "platform": platform,
+        "platform_uid": platform_uid,
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    return {
+        "user_id": data["user_id"],
+        "api_key": data["api_key"],
+        "access_token": data["access_token"],
+        "headers": {"Authorization": f"Bearer {data['access_token']}"},
+    }

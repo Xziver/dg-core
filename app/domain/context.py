@@ -1,22 +1,27 @@
-"""Context assembly — build LLM context from current session state."""
+"""Context assembly — build LLM context from current game state."""
 
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain import character, world
+from app.domain import character, region as region_mod
 from app.modules.memory.short_term import short_term_memory
 
 
 async def build_context(
     db: AsyncSession,
-    session_id: str,
+    game_id: str,
+    session_id: str | None = None,
+    user_id: str | None = None,
     extra: dict | None = None,
 ) -> dict:
     """Assemble context dict for LLM prompt rendering."""
-    ws = await world.get_world_state(db, session_id)
-    ghosts = await character.get_ghosts_in_session(db, session_id)
-    recent_text = short_term_memory.get_context_text(session_id)
+    ghosts = await character.get_ghosts_in_game(db, game_id)
+    regions = await region_mod.get_regions(db, game_id)
+
+    # Use session_id for short-term memory context if available
+    memory_key = session_id or game_id
+    recent_text = short_term_memory.get_context_text(memory_key)
 
     characters_info = []
     for g in ghosts:
@@ -25,9 +30,10 @@ async def build_context(
             f"{g.name}（HP: {g.hp}/{g.hp_max}, C={cmyk['C']} M={cmyk['M']} Y={cmyk['Y']} K={cmyk['K']}）"
         )
 
+    region_names = "、".join(r.name for r in regions) if regions else "未知"
+
     ctx = {
-        "sector_name": ws.current_sector if ws else "未知",
-        "sector_features": "",
+        "region_names": region_names,
         "current_state": recent_text,
         "characters": "、".join(characters_info) if characters_info else "无",
         "recent_events": recent_text,

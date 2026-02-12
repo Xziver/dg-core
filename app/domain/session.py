@@ -1,53 +1,42 @@
-"""Session management — create, join, end sessions."""
+"""Session management — play session lifecycle (start/end within a game)."""
 
 from __future__ import annotations
 
-import json
+from datetime import timezone, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.db_models import Player, Session, SessionPlayer, WorldState
+from app.models.db_models import Session
 
 
-async def create_session(
+async def start_session(
     db: AsyncSession,
-    name: str,
-    created_by: str,
-    config: dict | None = None,
+    game_id: str,
+    started_by: str,
+    region_id: str | None = None,
 ) -> Session:
+    """Start a new play session within a game."""
     session = Session(
-        name=name,
-        created_by=created_by,
-        config_json=json.dumps(config) if config else None,
+        game_id=game_id,
+        started_by=started_by,
+        region_id=region_id,
+        status="active",
     )
     db.add(session)
-    await db.flush()
-
-    # Creator auto-joins as KP
-    link = SessionPlayer(session_id=session.id, player_id=created_by, role="KP")
-    db.add(link)
-
-    # Initialize world state
-    world = WorldState(
-        session_id=session.id,
-        global_flags_json=json.dumps({}),
-    )
-    db.add(world)
     await db.flush()
     return session
 
 
-async def join_session(
-    db: AsyncSession,
-    session_id: str,
-    player_id: str,
-    role: str = "PL",
-) -> SessionPlayer:
-    link = SessionPlayer(session_id=session_id, player_id=player_id, role=role)
-    db.add(link)
+async def end_session(db: AsyncSession, session_id: str) -> Session:
+    """End a play session."""
+    session = await get_session(db, session_id)
+    if session is None:
+        raise ValueError(f"Session {session_id} not found")
+    session.status = "ended"
+    session.ended_at = datetime.now(timezone.utc)
     await db.flush()
-    return link
+    return session
 
 
 async def get_session(db: AsyncSession, session_id: str) -> Session | None:
@@ -55,26 +44,31 @@ async def get_session(db: AsyncSession, session_id: str) -> Session | None:
     return result.scalar_one_or_none()
 
 
-async def get_session_players(db: AsyncSession, session_id: str) -> list[SessionPlayer]:
+async def get_active_session(
+    db: AsyncSession,
+    game_id: str,
+    region_id: str | None = None,
+) -> Session | None:
+    """Find the currently active session for a game, optionally in a specific region."""
+    stmt = select(Session).where(
+        Session.game_id == game_id,
+        Session.status == "active",
+    )
+    if region_id is not None:
+        stmt = stmt.where(Session.region_id == region_id)
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def get_game_sessions(
+    db: AsyncSession,
+    game_id: str,
+    limit: int = 50,
+) -> list[Session]:
     result = await db.execute(
-        select(SessionPlayer).where(SessionPlayer.session_id == session_id)
+        select(Session)
+        .where(Session.game_id == game_id)
+        .order_by(Session.started_at.desc())
+        .limit(limit)
     )
     return list(result.scalars().all())
-
-
-async def start_session(db: AsyncSession, session_id: str) -> Session:
-    session = await get_session(db, session_id)
-    if session is None:
-        raise ValueError(f"Session {session_id} not found")
-    session.status = "active"
-    await db.flush()
-    return session
-
-
-async def end_session(db: AsyncSession, session_id: str) -> Session:
-    session = await get_session(db, session_id)
-    if session is None:
-        raise ValueError(f"Session {session_id} not found")
-    session.status = "ended"
-    await db.flush()
-    return session

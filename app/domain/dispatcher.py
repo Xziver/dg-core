@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain import character, session as session_mod, timeline, world
+from app.domain import character, game as game_mod, region as region_mod
+from app.domain import session as session_mod, timeline
 from app.domain.rules import combat, narration, skill
 from app.models.event import (
     ApplyFragmentPayload,
@@ -13,9 +14,9 @@ from app.models.event import (
     EventType,
     GameEvent,
     HPChangePayload,
+    LocationTransitionPayload,
     PlayerJoinPayload,
-    SectorTransitionPayload,
-    SessionEndPayload,
+    RegionTransitionPayload,
     SessionStartPayload,
     SkillCheckPayload,
     UsePrintAbilityPayload,
@@ -29,14 +30,21 @@ async def dispatch(db: AsyncSession, event: GameEvent) -> EngineResult:
     et = payload.event_type
 
     try:
-        if et == EventType.SESSION_START:
-            return await _handle_session_start(db, event)
-        elif et == EventType.SESSION_END:
-            return await _handle_session_end(db, event)
+        # Game lifecycle
+        if et == EventType.GAME_START:
+            return await _handle_game_start(db, event)
+        elif et == EventType.GAME_END:
+            return await _handle_game_end(db, event)
         elif et == EventType.PLAYER_JOIN:
             return await _handle_player_join(db, event)
         elif et == EventType.PLAYER_LEAVE:
             return await _handle_player_leave(db, event)
+        # Session lifecycle
+        elif et == EventType.SESSION_START:
+            return await _handle_session_start(db, event)
+        elif et == EventType.SESSION_END:
+            return await _handle_session_end(db, event)
+        # Actions
         elif et == EventType.SKILL_CHECK:
             return await _handle_skill_check(db, event)
         elif et == EventType.ATTACK:
@@ -45,12 +53,15 @@ async def dispatch(db: AsyncSession, event: GameEvent) -> EngineResult:
             return await _handle_defend(db, event)
         elif et == EventType.USE_PRINT_ABILITY:
             return await _handle_use_print_ability(db, event)
+        # State changes
         elif et == EventType.APPLY_FRAGMENT:
             return await _handle_apply_fragment(db, event)
         elif et == EventType.HP_CHANGE:
             return await _handle_hp_change(db, event)
-        elif et == EventType.SECTOR_TRANSITION:
-            return await _handle_sector_transition(db, event)
+        elif et == EventType.REGION_TRANSITION:
+            return await _handle_region_transition(db, event)
+        elif et == EventType.LOCATION_TRANSITION:
+            return await _handle_location_transition(db, event)
         else:
             return EngineResult(
                 success=False, event_type=et, error=f"Unhandled event type: {et}"
@@ -59,24 +70,77 @@ async def dispatch(db: AsyncSession, event: GameEvent) -> EngineResult:
         return EngineResult(success=False, event_type=et, error=str(exc))
 
 
-# --- System events ---
+def _require_session(event: GameEvent) -> str:
+    """Return session_id or raise if missing."""
+    if not event.session_id:
+        raise ValueError("session_id is required for this event type")
+    return event.session_id
+
+
+# --- Game lifecycle events ---
+
+async def _handle_game_start(db: AsyncSession, event: GameEvent) -> EngineResult:
+    game = await game_mod.start_game(db, event.game_id)
+    return EngineResult(
+        success=True,
+        event_type="game_start",
+        data={"game_id": game.id, "status": game.status},
+    )
+
+
+async def _handle_game_end(db: AsyncSession, event: GameEvent) -> EngineResult:
+    game = await game_mod.end_game(db, event.game_id)
+    return EngineResult(
+        success=True,
+        event_type="game_end",
+        data={"game_id": game.id, "status": game.status},
+    )
+
+
+async def _handle_player_join(db: AsyncSession, event: GameEvent) -> EngineResult:
+    payload: PlayerJoinPayload = event.payload  # type: ignore[assignment]
+    link = await game_mod.join_game(
+        db, event.game_id, event.user_id, role=payload.role
+    )
+    return EngineResult(
+        success=True,
+        event_type="player_join",
+        data={"game_id": event.game_id, "user_id": event.user_id, "role": link.role},
+    )
+
+
+async def _handle_player_leave(db: AsyncSession, event: GameEvent) -> EngineResult:
+    return EngineResult(
+        success=True,
+        event_type="player_leave",
+        data={"user_id": event.user_id},
+    )
+
+
+# --- Session lifecycle events ---
 
 async def _handle_session_start(db: AsyncSession, event: GameEvent) -> EngineResult:
-    s = await session_mod.start_session(db, event.session_id)
+    payload: SessionStartPayload = event.payload  # type: ignore[assignment]
+    s = await session_mod.start_session(
+        db, game_id=event.game_id, started_by=event.user_id, region_id=payload.region_id
+    )
     await timeline.append_event(
-        db, event.session_id, "session_start", actor_id=event.player_id
+        db, session_id=s.id, game_id=event.game_id,
+        event_type="session_start", actor_id=event.user_id,
     )
     return EngineResult(
         success=True,
         event_type="session_start",
-        data={"session_id": s.id, "status": s.status},
+        data={"session_id": s.id, "game_id": event.game_id, "status": s.status},
     )
 
 
 async def _handle_session_end(db: AsyncSession, event: GameEvent) -> EngineResult:
-    s = await session_mod.end_session(db, event.session_id)
+    sid = _require_session(event)
+    s = await session_mod.end_session(db, sid)
     await timeline.append_event(
-        db, event.session_id, "session_end", actor_id=event.player_id
+        db, session_id=sid, game_id=event.game_id,
+        event_type="session_end", actor_id=event.user_id,
     )
     return EngineResult(
         success=True,
@@ -85,59 +149,31 @@ async def _handle_session_end(db: AsyncSession, event: GameEvent) -> EngineResul
     )
 
 
-async def _handle_player_join(db: AsyncSession, event: GameEvent) -> EngineResult:
-    payload: PlayerJoinPayload = event.payload  # type: ignore[assignment]
-    link = await session_mod.join_session(
-        db, event.session_id, event.player_id, role=payload.role
-    )
-    await timeline.append_event(
-        db, event.session_id, "player_join",
-        actor_id=event.player_id,
-        data={"role": link.role},
-    )
-    return EngineResult(
-        success=True,
-        event_type="player_join",
-        data={"player_id": event.player_id, "role": link.role},
-    )
-
-
-async def _handle_player_leave(db: AsyncSession, event: GameEvent) -> EngineResult:
-    await timeline.append_event(
-        db, event.session_id, "player_leave", actor_id=event.player_id
-    )
-    return EngineResult(
-        success=True,
-        event_type="player_leave",
-        data={"player_id": event.player_id},
-    )
-
-
 # --- Action events ---
 
 async def _handle_skill_check(db: AsyncSession, event: GameEvent) -> EngineResult:
+    sid = _require_session(event)
     payload: SkillCheckPayload = event.payload  # type: ignore[assignment]
 
-    # Find the player's ghost in this session
-    ghost = await _find_player_ghost(db, event.session_id, event.player_id)
+    ghost = await _find_player_ghost(db, event.game_id, event.user_id)
     if ghost is None:
         return EngineResult(
-            success=False, event_type="skill_check", error="Player has no ghost in this session"
+            success=False, event_type="skill_check", error="Player has no ghost in this game"
         )
 
     result = await skill.handle_skill_check(
         db,
-        session_id=event.session_id,
-        player_id=event.player_id,
+        game_id=event.game_id,
+        session_id=sid,
+        user_id=event.user_id,
         ghost_id=ghost.id,
         color=payload.color,
         difficulty=payload.difficulty,
         context=payload.context,
     )
 
-    # Optional narration
     result = await narration.enrich_result_with_narration(
-        db, event.session_id, result,
+        db, event.game_id, result,
         character_name=ghost.name,
         context=payload.context,
     )
@@ -147,6 +183,7 @@ async def _handle_skill_check(db: AsyncSession, event: GameEvent) -> EngineResul
 # --- Combat events ---
 
 async def _handle_attack(db: AsyncSession, event: GameEvent) -> EngineResult:
+    sid = _require_session(event)
     payload: AttackPayload = event.payload  # type: ignore[assignment]
 
     attacker = await character.get_ghost(db, payload.attacker_ghost_id)
@@ -154,8 +191,9 @@ async def _handle_attack(db: AsyncSession, event: GameEvent) -> EngineResult:
 
     result = await combat.handle_attack(
         db,
-        session_id=event.session_id,
-        player_id=event.player_id,
+        game_id=event.game_id,
+        session_id=sid,
+        user_id=event.user_id,
         attacker_ghost_id=payload.attacker_ghost_id,
         target_ghost_id=payload.target_ghost_id,
         color_used=payload.color_used,
@@ -163,7 +201,7 @@ async def _handle_attack(db: AsyncSession, event: GameEvent) -> EngineResult:
 
     if attacker and target:
         result = await narration.enrich_result_with_narration(
-            db, event.session_id, result,
+            db, event.game_id, result,
             attacker_name=attacker.name,
             target_name=target.name,
         )
@@ -171,19 +209,21 @@ async def _handle_attack(db: AsyncSession, event: GameEvent) -> EngineResult:
 
 
 async def _handle_defend(db: AsyncSession, event: GameEvent) -> EngineResult:
+    sid = _require_session(event)
     payload: DefendPayload = event.payload  # type: ignore[assignment]
     return await combat.handle_defend(
         db,
-        session_id=event.session_id,
-        player_id=event.player_id,
+        game_id=event.game_id,
+        session_id=sid,
+        user_id=event.user_id,
         defender_ghost_id=payload.defender_ghost_id,
         color_used=payload.color_used,
     )
 
 
 async def _handle_use_print_ability(db: AsyncSession, event: GameEvent) -> EngineResult:
+    sid = _require_session(event)
     payload: UsePrintAbilityPayload = event.payload  # type: ignore[assignment]
-    # For MVP: use_print_ability without a prior roll context just records it
     ability = await character.get_print_ability(db, payload.ability_id)
     if ability is None:
         return EngineResult(
@@ -195,8 +235,9 @@ async def _handle_use_print_ability(db: AsyncSession, event: GameEvent) -> Engin
             success=False, event_type="use_print_ability", error="No uses remaining"
         )
     await timeline.append_event(
-        db, event.session_id, "use_print_ability",
-        actor_id=event.player_id,
+        db, session_id=sid, game_id=event.game_id,
+        event_type="use_print_ability",
+        actor_id=event.user_id,
         data={"ghost_id": payload.ghost_id, "ability_id": payload.ability_id},
     )
     return EngineResult(
@@ -217,6 +258,7 @@ async def _handle_use_print_ability(db: AsyncSession, event: GameEvent) -> Engin
 # --- State events ---
 
 async def _handle_apply_fragment(db: AsyncSession, event: GameEvent) -> EngineResult:
+    sid = _require_session(event)
     payload: ApplyFragmentPayload = event.payload  # type: ignore[assignment]
     ghost = await character.get_ghost(db, payload.ghost_id)
     if ghost is None:
@@ -225,8 +267,9 @@ async def _handle_apply_fragment(db: AsyncSession, event: GameEvent) -> EngineRe
         )
     new_cmyk = await character.apply_color_fragment(db, ghost, payload.color, payload.value)
     await timeline.append_event(
-        db, event.session_id, "apply_fragment",
-        actor_id=event.player_id,
+        db, session_id=sid, game_id=event.game_id,
+        event_type="apply_fragment",
+        actor_id=event.user_id,
         data={"ghost_id": payload.ghost_id, "color": payload.color, "value": payload.value},
     )
     return EngineResult(
@@ -245,6 +288,7 @@ async def _handle_apply_fragment(db: AsyncSession, event: GameEvent) -> EngineRe
 
 
 async def _handle_hp_change(db: AsyncSession, event: GameEvent) -> EngineResult:
+    sid = _require_session(event)
     payload: HPChangePayload = event.payload  # type: ignore[assignment]
     ghost = await character.get_ghost(db, payload.ghost_id)
     if ghost is None:
@@ -254,8 +298,9 @@ async def _handle_hp_change(db: AsyncSession, event: GameEvent) -> EngineResult:
     old_hp = ghost.hp
     new_hp, collapsed = await character.change_hp(db, ghost, payload.delta)
     await timeline.append_event(
-        db, event.session_id, "hp_change",
-        actor_id=event.player_id,
+        db, session_id=sid, game_id=event.game_id,
+        event_type="hp_change",
+        actor_id=event.user_id,
         data={"ghost_id": payload.ghost_id, "delta": payload.delta, "reason": payload.reason},
         result_data={"new_hp": new_hp, "collapsed": collapsed},
     )
@@ -280,27 +325,53 @@ async def _handle_hp_change(db: AsyncSession, event: GameEvent) -> EngineResult:
     )
 
 
-async def _handle_sector_transition(db: AsyncSession, event: GameEvent) -> EngineResult:
-    payload: SectorTransitionPayload = event.payload  # type: ignore[assignment]
-    ws = await world.get_world_state(db, event.session_id)
-    old_sector = ws.current_sector if ws else None
-    await world.set_current_sector(db, event.session_id, payload.target_sector)
-    await timeline.append_event(
-        db, event.session_id, "sector_transition",
-        actor_id=event.player_id,
-        data={"from": old_sector, "to": payload.target_sector},
+async def _handle_region_transition(db: AsyncSession, event: GameEvent) -> EngineResult:
+    payload: RegionTransitionPayload = event.payload  # type: ignore[assignment]
+    await region_mod.move_player(
+        db, event.game_id, event.user_id, region_id=payload.target_region_id
     )
+    if event.session_id:
+        await timeline.append_event(
+            db, session_id=event.session_id, game_id=event.game_id,
+            event_type="region_transition", actor_id=event.user_id,
+            data={"target_region_id": payload.target_region_id},
+        )
     return EngineResult(
         success=True,
-        event_type="sector_transition",
-        data={"old_sector": old_sector, "new_sector": payload.target_sector},
+        event_type="region_transition",
+        data={"user_id": event.user_id, "region_id": payload.target_region_id},
         state_changes=[
             StateChange(
-                entity_type="world_state",
-                entity_id=event.session_id,
-                field="current_sector",
-                old_value=old_sector,
-                new_value=payload.target_sector,
+                entity_type="game_player",
+                entity_id=event.user_id,
+                field="current_region_id",
+                new_value=payload.target_region_id,
+            )
+        ],
+    )
+
+
+async def _handle_location_transition(db: AsyncSession, event: GameEvent) -> EngineResult:
+    payload: LocationTransitionPayload = event.payload  # type: ignore[assignment]
+    await region_mod.move_player(
+        db, event.game_id, event.user_id, location_id=payload.target_location_id
+    )
+    if event.session_id:
+        await timeline.append_event(
+            db, session_id=event.session_id, game_id=event.game_id,
+            event_type="location_transition", actor_id=event.user_id,
+            data={"target_location_id": payload.target_location_id},
+        )
+    return EngineResult(
+        success=True,
+        event_type="location_transition",
+        data={"user_id": event.user_id, "location_id": payload.target_location_id},
+        state_changes=[
+            StateChange(
+                entity_type="game_player",
+                entity_id=event.user_id,
+                field="current_location_id",
+                new_value=payload.target_location_id,
             )
         ],
     )
@@ -309,15 +380,15 @@ async def _handle_sector_transition(db: AsyncSession, event: GameEvent) -> Engin
 # --- Helpers ---
 
 async def _find_player_ghost(
-    db: AsyncSession, session_id: str, player_id: str
+    db: AsyncSession, game_id: str, user_id: str
 ) -> character.Ghost | None:
-    """Find the ghost belonging to this player's patient in this session."""
+    """Find the ghost belonging to this user's patient in this game."""
     from sqlalchemy import select
-    from app.models.db_models import Patient, Ghost
+    from app.models.db_models import Ghost, Patient
 
     result = await db.execute(
         select(Ghost)
         .join(Patient, Ghost.patient_id == Patient.id)
-        .where(Patient.player_id == player_id, Patient.session_id == session_id)
+        .where(Patient.user_id == user_id, Patient.game_id == game_id)
     )
     return result.scalar_one_or_none()

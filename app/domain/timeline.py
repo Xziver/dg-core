@@ -23,6 +23,7 @@ async def _next_seq(db: AsyncSession, session_id: str) -> int:
 async def append_event(
     db: AsyncSession,
     session_id: str,
+    game_id: str,
     event_type: str,
     actor_id: str | None = None,
     data: dict | None = None,
@@ -32,6 +33,7 @@ async def append_event(
     seq = await _next_seq(db, session_id)
     event = TimelineEvent(
         session_id=session_id,
+        game_id=game_id,
         seq=seq,
         event_type=event_type,
         actor_id=actor_id,
@@ -61,6 +63,23 @@ async def get_timeline(
         select(TimelineEvent)
         .where(TimelineEvent.session_id == session_id)
         .order_by(TimelineEvent.seq)
+        .limit(limit)
+        .offset(offset)
+    )
+    return list(result.scalars().all())
+
+
+async def get_game_timeline(
+    db: AsyncSession,
+    game_id: str,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[TimelineEvent]:
+    """Get timeline events across all sessions in a game."""
+    result = await db.execute(
+        select(TimelineEvent)
+        .where(TimelineEvent.game_id == game_id)
+        .order_by(TimelineEvent.created_at)
         .limit(limit)
         .offset(offset)
     )
