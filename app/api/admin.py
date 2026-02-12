@@ -10,7 +10,9 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain import character, game as game_mod, region as region_mod
+from app.infra.auth import get_current_user
 from app.infra.db import get_db
+from app.models.db_models import User
 from app.modules.rag.index import index_document
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -20,7 +22,6 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 class CreateGameRequest(BaseModel):
     name: str
-    created_by: str  # player_id
     config: dict | None = None
 
 
@@ -31,7 +32,7 @@ class UpdateGameRequest(BaseModel):
 
 
 class AddPlayerRequest(BaseModel):
-    player_id: str
+    user_id: str
     role: str = "PL"
 
 
@@ -52,7 +53,7 @@ class CreateLocationRequest(BaseModel):
 
 
 class CreatePatientRequest(BaseModel):
-    player_id: str
+    user_id: str
     game_id: str
     name: str
     soul_color: str
@@ -66,7 +67,7 @@ class CreatePatientRequest(BaseModel):
 
 class CreateGhostRequest(BaseModel):
     patient_id: str
-    creator_player_id: str
+    creator_user_id: str
     game_id: str
     name: str
     soul_color: str
@@ -87,41 +88,10 @@ class PrintAbilityInput(BaseModel):
 CreateGhostRequest.model_rebuild()
 
 
-class CreatePlayerRequest(BaseModel):
-    platform: str
-    platform_uid: str
-    display_name: str
-
-
 class RAGUploadRequest(BaseModel):
     content: str
     category: str
     metadata: dict | None = None
-
-
-# --- Player endpoints ---
-
-@router.post("/players")
-async def create_player(
-    req: CreatePlayerRequest,
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> dict:
-    import hashlib
-    import secrets
-    from app.models.db_models import Player
-
-    api_key = secrets.token_hex(32)
-    api_key_hash = hashlib.sha256(api_key.encode()).hexdigest()
-
-    player = Player(
-        platform=req.platform,
-        platform_uid=req.platform_uid,
-        display_name=req.display_name,
-        api_key_hash=api_key_hash,
-    )
-    db.add(player)
-    await db.flush()
-    return {"player_id": player.id, "api_key": api_key}
 
 
 # --- Game endpoints ---
@@ -129,9 +99,10 @@ async def create_player(
 @router.post("/games")
 async def create_game(
     req: CreateGameRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
-    game = await game_mod.create_game(db, req.name, req.created_by, req.config)
+    game = await game_mod.create_game(db, req.name, current_user.id, req.config)
     return {"game_id": game.id, "name": game.name, "status": game.status}
 
 
@@ -139,6 +110,7 @@ async def create_game(
 async def update_game(
     game_id: str,
     req: UpdateGameRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     game = await game_mod.get_game(db, game_id)
@@ -158,10 +130,11 @@ async def update_game(
 async def add_player_to_game(
     game_id: str,
     req: AddPlayerRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
-    link = await game_mod.join_game(db, game_id, req.player_id, req.role)
-    return {"game_id": game_id, "player_id": req.player_id, "role": link.role}
+    link = await game_mod.join_game(db, game_id, req.user_id, req.role)
+    return {"game_id": game_id, "user_id": req.user_id, "role": link.role}
 
 
 # --- Region endpoints ---
@@ -170,6 +143,7 @@ async def add_player_to_game(
 async def create_region(
     game_id: str,
     req: CreateRegionRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     region = await region_mod.create_region(
@@ -185,6 +159,7 @@ async def create_region(
 @router.get("/games/{game_id}/regions")
 async def list_regions(
     game_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     regions = await region_mod.get_regions(db, game_id)
@@ -203,6 +178,7 @@ async def list_regions(
 async def create_location(
     region_id: str,
     req: CreateLocationRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     location = await region_mod.create_location(
@@ -219,6 +195,7 @@ async def create_location(
 @router.get("/regions/{region_id}/locations")
 async def list_locations(
     region_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     locations = await region_mod.get_locations(db, region_id)
@@ -236,11 +213,12 @@ async def list_locations(
 @router.post("/characters/patient")
 async def create_patient(
     req: CreatePatientRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     patient = await character.create_patient(
         db,
-        player_id=req.player_id,
+        user_id=req.user_id,
         game_id=req.game_id,
         name=req.name,
         soul_color=req.soul_color,
@@ -258,12 +236,13 @@ async def create_patient(
 @router.post("/characters/ghost")
 async def create_ghost(
     req: CreateGhostRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     ghost = await character.create_ghost(
         db,
         patient_id=req.patient_id,
-        creator_player_id=req.creator_player_id,
+        creator_user_id=req.creator_user_id,
         game_id=req.game_id,
         name=req.name,
         soul_color=req.soul_color,
@@ -294,6 +273,7 @@ async def create_ghost(
 @router.get("/characters/{character_id}")
 async def get_character(
     character_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     # Try ghost first, then patient
@@ -333,6 +313,9 @@ async def get_character(
 # --- RAG endpoint ---
 
 @router.post("/rag/upload")
-async def upload_rag_document(req: RAGUploadRequest) -> dict:
+async def upload_rag_document(
+    req: RAGUploadRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
     chunks = await index_document(req.content, req.category, req.metadata)
     return {"chunks_indexed": chunks, "category": req.category}

@@ -14,7 +14,7 @@ from app.models.db_models import ColorFragment, Ghost, Patient, PrintAbility
 
 async def create_patient(
     db: AsyncSession,
-    player_id: str,
+    user_id: str,
     game_id: str,
     name: str,
     soul_color: str,
@@ -26,7 +26,7 @@ async def create_patient(
     ideal_projection: str | None = None,
 ) -> Patient:
     patient = Patient(
-        player_id=player_id,
+        user_id=user_id,
         game_id=game_id,
         name=name,
         soul_color=soul_color.upper(),
@@ -69,7 +69,7 @@ def generate_swap_file(patient: Patient) -> dict:
 async def create_ghost(
     db: AsyncSession,
     patient_id: str,
-    creator_player_id: str,
+    creator_user_id: str,
     game_id: str,
     name: str,
     soul_color: str,
@@ -83,7 +83,7 @@ async def create_ghost(
 
     ghost = Ghost(
         patient_id=patient_id,
-        creator_player_id=creator_player_id,
+        creator_user_id=creator_user_id,
         game_id=game_id,
         name=name,
         appearance=appearance,

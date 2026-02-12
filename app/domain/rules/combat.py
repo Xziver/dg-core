@@ -14,7 +14,7 @@ async def handle_attack(
     db: AsyncSession,
     game_id: str,
     session_id: str,
-    player_id: str,
+    user_id: str,
     attacker_ghost_id: str,
     target_ghost_id: str,
     color_used: str,
@@ -92,7 +92,7 @@ async def handle_attack(
         session_id=session_id,
         game_id=game_id,
         event_type="attack",
-        actor_id=player_id,
+        actor_id=user_id,
         data={
             "attacker_ghost_id": attacker_ghost_id,
             "target_ghost_id": target_ghost_id,
@@ -120,7 +120,7 @@ async def handle_defend(
     db: AsyncSession,
     game_id: str,
     session_id: str,
-    player_id: str,
+    user_id: str,
     defender_ghost_id: str,
     color_used: str,
 ) -> EngineResult:
@@ -155,7 +155,7 @@ async def handle_defend(
         session_id=session_id,
         game_id=game_id,
         event_type="defend",
-        actor_id=player_id,
+        actor_id=user_id,
         data={"defender_ghost_id": defender_ghost_id, "color_used": color_used},
         result_data={"total": defense_roll.total, "success": defense_roll.success},
     )

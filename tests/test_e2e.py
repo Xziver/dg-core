@@ -3,68 +3,60 @@
 import pytest
 from httpx import AsyncClient
 
+from tests.conftest import register_user
+
 
 @pytest.mark.asyncio
 async def test_full_game_flow(client: AsyncClient):
     """
     End-to-end scenario:
-    1. Create KP and PL players
+    1. Register KP and PL users
     2. Create a game (KP)
     3. PL joins game
     4. Create regions
     5. Create patient + ghost for PL
     6. Start game
     7. Start play session
-    8. Submit skill_check event → verify dice result
-    9. Submit attack event → verify combat + HP change
-    10. Query timeline → verify events recorded
-    11. End session → end game
+    8. Submit skill_check event
+    9. Submit attack event
+    10. Query timeline
+    11. End session + end game
     """
 
-    # 1. Create players
-    kp_resp = await client.post("/api/admin/players", json={
-        "platform": "discord", "platform_uid": "kp_main", "display_name": "KP小倩",
-    })
-    kp_id = kp_resp.json()["player_id"]
+    # 1. Register users
+    kp = await register_user(client, "KP小倩", "discord", "kp_main")
+    pl = await register_user(client, "玩家A", "discord", "pl_main")
+    pl2 = await register_user(client, "玩家B", "discord", "pl_ghost_creator")
 
-    pl_resp = await client.post("/api/admin/players", json={
-        "platform": "discord", "platform_uid": "pl_main", "display_name": "玩家A",
-    })
-    pl_id = pl_resp.json()["player_id"]
-
-    pl2_resp = await client.post("/api/admin/players", json={
-        "platform": "discord", "platform_uid": "pl_ghost_creator", "display_name": "玩家B",
-    })
-    pl2_id = pl2_resp.json()["player_id"]
+    kp_h = kp["headers"]
+    pl_h = pl["headers"]
 
     # 2. Create game
     game_resp = await client.post("/api/admin/games", json={
         "name": "灰山城第一章·信号裂痕",
-        "created_by": kp_id,
         "config": {"dice_type": 6, "initial_hp": 10},
-    })
+    }, headers=kp_h)
     game_id = game_resp.json()["game_id"]
 
     # 3. PL joins game
     join_resp = await client.post(f"/api/admin/games/{game_id}/players", json={
-        "player_id": pl_id, "role": "PL",
-    })
+        "user_id": pl["user_id"], "role": "PL",
+    }, headers=kp_h)
     assert join_resp.status_code == 200
 
-    # Also add pl2 to game
     await client.post(f"/api/admin/games/{game_id}/players", json={
-        "player_id": pl2_id, "role": "PL",
-    })
+        "user_id": pl2["user_id"], "role": "PL",
+    }, headers=kp_h)
 
     # 4. Create regions
     region_resp = await client.post(f"/api/admin/games/{game_id}/regions", json={
         "code": "A", "name": "数据荒原",
-    })
+    }, headers=kp_h)
     assert region_resp.status_code == 200
 
-    # 5. Create patient → get SWAP → create ghost
+    # 5. Create patient + ghost
     patient_resp = await client.post("/api/admin/characters/patient", json={
-        "player_id": pl_id,
+        "user_id": pl["user_id"],
         "game_id": game_id,
         "name": "林默",
         "soul_color": "C",
@@ -78,14 +70,14 @@ async def test_full_game_flow(client: AsyncClient):
             "K": "即使全世界都说不可能，我也要找到那个答案",
         },
         "ideal_projection": "我想成为一个能看穿一切谎言的存在，一个数据世界的守望者",
-    })
+    }, headers=pl_h)
     patient_id = patient_resp.json()["patient_id"]
     swap = patient_resp.json()["swap_file"]
     assert swap["soul_color"] == "C"
 
     ghost_resp = await client.post("/api/admin/characters/ghost", json={
         "patient_id": patient_id,
-        "creator_player_id": pl2_id,
+        "creator_user_id": pl2["user_id"],
         "game_id": game_id,
         "name": "Echo",
         "soul_color": "C",
@@ -99,45 +91,45 @@ async def test_full_game_flow(client: AsyncClient):
                 "ability_count": 2,
             },
         ],
-    })
+    }, headers=pl2["headers"])
     ghost_id = ghost_resp.json()["ghost_id"]
     assert ghost_resp.json()["cmyk"]["C"] == 1
 
     # Also create a second patient+ghost as target
     p2_patient = await client.post("/api/admin/characters/patient", json={
-        "player_id": pl2_id, "game_id": game_id, "name": "敌方实体", "soul_color": "M",
-    })
+        "user_id": pl2["user_id"], "game_id": game_id, "name": "敌方实体", "soul_color": "M",
+    }, headers=pl2["headers"])
     target_patient_id = p2_patient.json()["patient_id"]
 
     target_ghost = await client.post("/api/admin/characters/ghost", json={
         "patient_id": target_patient_id,
-        "creator_player_id": pl_id,
+        "creator_user_id": pl["user_id"],
         "game_id": game_id,
         "name": "Glitch",
         "soul_color": "M",
-    })
+    }, headers=pl_h)
     target_ghost_id = target_ghost.json()["ghost_id"]
 
     # 6. Start game
     start_game_resp = await client.post("/api/bot/events", json={
         "game_id": game_id,
-        "player_id": kp_id,
+        "user_id": kp["user_id"],
         "payload": {"event_type": "game_start"},
-    })
+    }, headers=kp_h)
     assert start_game_resp.status_code == 200
     assert start_game_resp.json()["success"] is True
     assert start_game_resp.json()["data"]["status"] == "active"
 
     # Verify game is active
-    game_info = await client.get(f"/api/bot/games/{game_id}")
+    game_info = await client.get(f"/api/bot/games/{game_id}", headers=kp_h)
     assert game_info.json()["status"] == "active"
 
     # 7. Start play session
     session_start_resp = await client.post("/api/bot/events", json={
         "game_id": game_id,
-        "player_id": kp_id,
+        "user_id": kp["user_id"],
         "payload": {"event_type": "session_start"},
-    })
+    }, headers=kp_h)
     assert session_start_resp.status_code == 200
     assert session_start_resp.json()["success"] is True
     session_id = session_start_resp.json()["data"]["session_id"]
@@ -146,14 +138,14 @@ async def test_full_game_flow(client: AsyncClient):
     check_resp = await client.post("/api/bot/events", json={
         "game_id": game_id,
         "session_id": session_id,
-        "player_id": pl_id,
+        "user_id": pl["user_id"],
         "payload": {
             "event_type": "skill_check",
             "color": "C",
             "difficulty": 3,
             "context": "尝试分析扇区的数据流，寻找异常信号",
         },
-    })
+    }, headers=pl_h)
     assert check_resp.status_code == 200
     check_data = check_resp.json()
     assert check_data["success"] is True
@@ -166,14 +158,14 @@ async def test_full_game_flow(client: AsyncClient):
     atk_resp = await client.post("/api/bot/events", json={
         "game_id": game_id,
         "session_id": session_id,
-        "player_id": pl_id,
+        "user_id": pl["user_id"],
         "payload": {
             "event_type": "attack",
             "attacker_ghost_id": ghost_id,
             "target_ghost_id": target_ghost_id,
             "color_used": "C",
         },
-    })
+    }, headers=pl_h)
     assert atk_resp.status_code == 200
     atk_data = atk_resp.json()
     assert atk_data["success"] is True
@@ -181,7 +173,9 @@ async def test_full_game_flow(client: AsyncClient):
     assert "hit" in atk_data["data"]
 
     # 10. Query timeline
-    tl_resp = await client.get(f"/api/bot/sessions/{session_id}/timeline")
+    tl_resp = await client.get(
+        f"/api/bot/sessions/{session_id}/timeline", headers=kp_h
+    )
     assert tl_resp.status_code == 200
     events = tl_resp.json()["events"]
     assert len(events) >= 3  # session_start + skill_check + attack
@@ -194,16 +188,16 @@ async def test_full_game_flow(client: AsyncClient):
     end_session_resp = await client.post("/api/bot/events", json={
         "game_id": game_id,
         "session_id": session_id,
-        "player_id": kp_id,
+        "user_id": kp["user_id"],
         "payload": {"event_type": "session_end"},
-    })
+    }, headers=kp_h)
     assert end_session_resp.status_code == 200
     assert end_session_resp.json()["data"]["status"] == "ended"
 
     end_game_resp = await client.post("/api/bot/events", json={
         "game_id": game_id,
-        "player_id": kp_id,
+        "user_id": kp["user_id"],
         "payload": {"event_type": "game_end"},
-    })
+    }, headers=kp_h)
     assert end_game_resp.status_code == 200
     assert end_game_resp.json()["data"]["status"] == "ended"

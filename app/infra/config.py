@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     # Dice
     default_dice_type: int = 6
 
+    # Auth / JWT
+    jwt_secret_key: str = "dev-secret-change-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 1440  # 24 hours
+
     # App
     app_host: str = "0.0.0.0"
     app_port: int = 8000

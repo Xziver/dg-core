@@ -10,7 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain import game as game_mod, session as session_mod, timeline
 from app.domain.dispatcher import dispatch
+from app.infra.auth import get_current_user
 from app.infra.db import get_db
+from app.infra.ws_manager import ws_manager
+from app.models.db_models import User
 from app.models.event import GameEvent
 
 router = APIRouter(prefix="/api/bot", tags=["bot"])
@@ -19,16 +22,20 @@ router = APIRouter(prefix="/api/bot", tags=["bot"])
 @router.post("/events")
 async def submit_event(
     event: GameEvent,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     """Submit a game event to the engine dispatcher."""
     result = await dispatch(db, event)
+    # Broadcast to WebSocket clients watching this game
+    await ws_manager.broadcast_to_game(event.game_id, result)
     return result.model_dump()
 
 
 @router.get("/games/{game_id}")
 async def get_game(
     game_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     game = await game_mod.get_game(db, game_id)
@@ -41,7 +48,7 @@ async def get_game(
         "status": game.status,
         "config": json.loads(game.config_json) if game.config_json else None,
         "players": [
-            {"player_id": p.player_id, "role": p.role}
+            {"user_id": p.user_id, "role": p.role}
             for p in players
         ],
     }
@@ -50,6 +57,7 @@ async def get_game(
 @router.get("/sessions/{session_id}/timeline")
 async def get_session_timeline(
     session_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     limit: int = 50,
     offset: int = 0,
@@ -79,6 +87,7 @@ async def get_session_timeline(
 @router.get("/games/{game_id}/timeline")
 async def get_game_timeline(
     game_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     limit: int = 100,
     offset: int = 0,

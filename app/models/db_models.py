@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Enum,
     Float,
@@ -30,21 +31,39 @@ class Base(DeclarativeBase):
     pass
 
 
-class Player(Base):
-    __tablename__ = "players"
+class User(Base):
+    __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
-    platform: Mapped[str] = mapped_column(String(32), nullable=False)  # "discord", "qq", "web"
-    platform_uid: Mapped[str] = mapped_column(String(128), nullable=False)
     display_name: Mapped[str] = mapped_column(String(64), nullable=False)
     api_key_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    role: Mapped[str] = mapped_column(String(16), default="user")  # "user", "admin"
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
-    game_links: Mapped[list[GamePlayer]] = relationship(back_populates="player")
-    patients: Mapped[list[Patient]] = relationship(back_populates="player")
+    platform_bindings: Mapped[list[PlatformBinding]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    game_links: Mapped[list[GamePlayer]] = relationship(back_populates="user")
+    patients: Mapped[list[Patient]] = relationship(back_populates="user")
+
+
+class PlatformBinding(Base):
+    """Links a User to an external platform identity (QQ, Discord, web, etc.)."""
+
+    __tablename__ = "platform_bindings"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), nullable=False)
+    platform: Mapped[str] = mapped_column(String(32), nullable=False)  # "qq", "discord", "web"
+    platform_uid: Mapped[str] = mapped_column(String(128), nullable=False)
+    bound_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    user: Mapped[User] = relationship(back_populates="platform_bindings")
 
     __table_args__ = (
-        Index("ix_player_platform", "platform", "platform_uid", unique=True),
+        Index("ix_binding_platform", "platform", "platform_uid", unique=True),
+        Index("ix_binding_user", "user_id"),
     )
 
 
@@ -61,10 +80,10 @@ class Game(Base):
     )
     config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     flags_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_by: Mapped[str] = mapped_column(String(32), ForeignKey("players.id"))
+    created_by: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
-    player_links: Mapped[list[GamePlayer]] = relationship(back_populates="game")
+    user_links: Mapped[list[GamePlayer]] = relationship(back_populates="game")
     regions: Mapped[list[Region]] = relationship(back_populates="game")
     patients: Mapped[list[Patient]] = relationship(back_populates="game")
     ghosts: Mapped[list[Ghost]] = relationship(back_populates="game")
@@ -79,8 +98,8 @@ class GamePlayer(Base):
     game_id: Mapped[str] = mapped_column(
         String(32), ForeignKey("games.id"), primary_key=True
     )
-    player_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("players.id"), primary_key=True
+    user_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("users.id"), primary_key=True
     )
     role: Mapped[str] = mapped_column(
         Enum("KP", "PL", name="player_role"), nullable=False
@@ -93,8 +112,8 @@ class GamePlayer(Base):
     )
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
-    game: Mapped[Game] = relationship(back_populates="player_links")
-    player: Mapped[Player] = relationship(back_populates="game_links")
+    game: Mapped[Game] = relationship(back_populates="user_links")
+    user: Mapped[User] = relationship(back_populates="game_links")
     current_region: Mapped[Region | None] = relationship()
     current_location: Mapped[Location | None] = relationship()
 
@@ -147,7 +166,7 @@ class Patient(Base):
     __tablename__ = "patients"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
-    player_id: Mapped[str] = mapped_column(String(32), ForeignKey("players.id"))
+    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"))
     game_id: Mapped[str] = mapped_column(String(32), ForeignKey("games.id"))
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     gender: Mapped[str | None] = mapped_column(String(16), nullable=True)
@@ -159,7 +178,7 @@ class Patient(Base):
     ideal_projection: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
-    player: Mapped[Player] = relationship(back_populates="patients")
+    user: Mapped[User] = relationship(back_populates="patients")
     game: Mapped[Game] = relationship(back_populates="patients")
     ghost: Mapped[Ghost | None] = relationship(back_populates="patient", uselist=False)
 
@@ -175,7 +194,7 @@ class Ghost(Base):
     patient_id: Mapped[str] = mapped_column(
         String(32), ForeignKey("patients.id"), unique=True
     )
-    creator_player_id: Mapped[str] = mapped_column(String(32), ForeignKey("players.id"))
+    creator_user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"))
     game_id: Mapped[str] = mapped_column(String(32), ForeignKey("games.id"))
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     appearance: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -218,7 +237,7 @@ class Session(Base):
     region_id: Mapped[str | None] = mapped_column(
         String(32), ForeignKey("regions.id"), nullable=True
     )
-    started_by: Mapped[str] = mapped_column(String(32), ForeignKey("players.id"))
+    started_by: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"))
     status: Mapped[str] = mapped_column(
         Enum("active", "ended", name="session_status"),
         default="active",

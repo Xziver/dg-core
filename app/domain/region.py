@@ -91,7 +91,7 @@ async def get_locations(db: AsyncSession, region_id: str) -> list[Location]:
 async def move_player(
     db: AsyncSession,
     game_id: str,
-    player_id: str,
+    user_id: str,
     region_id: str | None = None,
     location_id: str | None = None,
 ) -> GamePlayer:
@@ -99,12 +99,12 @@ async def move_player(
     result = await db.execute(
         select(GamePlayer).where(
             GamePlayer.game_id == game_id,
-            GamePlayer.player_id == player_id,
+            GamePlayer.user_id == user_id,
         )
     )
     gp = result.scalar_one_or_none()
     if gp is None:
-        raise ValueError(f"Player {player_id} not found in game {game_id}")
+        raise ValueError(f"Player {user_id} not found in game {game_id}")
     if region_id is not None:
         gp.current_region_id = region_id
     if location_id is not None:

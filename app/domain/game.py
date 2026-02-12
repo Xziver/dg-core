@@ -26,7 +26,7 @@ async def create_game(
     await db.flush()
 
     # Creator auto-joins as KP
-    link = GamePlayer(game_id=game.id, player_id=created_by, role="KP")
+    link = GamePlayer(game_id=game.id, user_id=created_by, role="KP")
     db.add(link)
     await db.flush()
     return game
@@ -35,10 +35,10 @@ async def create_game(
 async def join_game(
     db: AsyncSession,
     game_id: str,
-    player_id: str,
+    user_id: str,
     role: str = "PL",
 ) -> GamePlayer:
-    link = GamePlayer(game_id=game_id, player_id=player_id, role=role)
+    link = GamePlayer(game_id=game_id, user_id=user_id, role=role)
     db.add(link)
     await db.flush()
     return link

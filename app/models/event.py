@@ -179,6 +179,6 @@ class GameEvent(BaseModel):
 
     game_id: str
     session_id: str | None = None
-    player_id: str
+    user_id: str
     payload: EventPayload
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

@@ -12,7 +12,7 @@ async def build_context(
     db: AsyncSession,
     game_id: str,
     session_id: str | None = None,
-    player_id: str | None = None,
+    user_id: str | None = None,
     extra: dict | None = None,
 ) -> dict:
     """Assemble context dict for LLM prompt rendering."""
