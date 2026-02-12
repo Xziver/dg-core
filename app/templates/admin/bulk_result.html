@@ -1,0 +1,44 @@
+{% extends "sqladmin/layout.html" %}
+
+{% block content_header %}
+<div class="row align-items-center">
+  <div class="col">
+    <h2 class="page-title">Import Result</h2>
+    <div class="page-pretitle">{{ entity }} import</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="col-lg-8">
+  <div class="card">
+    <div class="card-body">
+      {% if not success and error %}
+      <div class="alert alert-danger">
+        <i class="fa-solid fa-circle-xmark me-2"></i>{{ error }}
+      </div>
+      {% elif success %}
+      <div class="alert alert-success">
+        <i class="fa-solid fa-circle-check me-2"></i>
+        Successfully created <strong>{{ created }}</strong> {{ entity }} record(s).
+      </div>
+
+      {% if errors %}
+      <div class="alert alert-warning mt-3">
+        <h4 class="alert-title">Errors ({{ errors | length }})</h4>
+        <ul class="mb-0">
+          {% for err in errors %}
+          <li>{{ err }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% endif %}
+
+      <a href="/admin/bulk" class="btn btn-primary mt-3">
+        <i class="fa-solid fa-arrow-left me-1"></i> Back to Bulk Operations
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}
