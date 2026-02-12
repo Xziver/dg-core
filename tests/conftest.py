@@ -51,13 +51,13 @@ async def client(db_engine):
 
 async def register_user(
     client: AsyncClient,
-    display_name: str = "TestUser",
+    username: str = "TestUser",
     platform: str = "test",
     platform_uid: str = "test_001",
 ) -> dict:
     """Register a user and return dict with user_id, api_key, headers."""
     resp = await client.post("/api/auth/register", json={
-        "display_name": display_name,
+        "username": username,
         "platform": platform,
         "platform_uid": platform_uid,
     })

@@ -18,7 +18,7 @@ async def test_health(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_register_user(client: AsyncClient):
     resp = await client.post("/api/auth/register", json={
-        "display_name": "TestPlayer",
+        "username": "TestPlayer",
         "platform": "discord",
         "platform_uid": "user123",
     })

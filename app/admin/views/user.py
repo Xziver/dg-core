@@ -10,16 +10,17 @@ class UserAdmin(ModelView, model=User):
     name_plural = "Users"
     icon = "fa-solid fa-users"
 
-    column_list = [User.id, User.display_name, User.role, User.is_active, User.created_at]
-    column_searchable_list = [User.display_name, User.id]
-    column_sortable_list = [User.display_name, User.created_at, User.role]
+    column_list = [User.id, User.username, User.role, User.is_active, User.created_at]
+    column_searchable_list = [User.username, User.id]
+    column_sortable_list = [User.username, User.created_at, User.role]
     column_default_sort = ("created_at", True)
 
-    form_columns = [User.display_name, User.role, User.is_active]
+    form_columns = ["username", "email", "role", "is_active"]
 
     column_details_list = [
         User.id,
-        User.display_name,
+        User.username,
+        User.email,
         User.role,
         User.is_active,
         User.created_at,
@@ -48,9 +49,9 @@ class PlatformBindingAdmin(ModelView, model=PlatformBinding):
     column_sortable_list = [PlatformBinding.platform, PlatformBinding.bound_at]
 
     form_columns = [
-        PlatformBinding.user_id,
-        PlatformBinding.platform,
-        PlatformBinding.platform_uid,
+        "user",
+        "platform",
+        "platform_uid",
     ]
 
     can_export = True

@@ -10,7 +10,7 @@ class GameAdmin(ModelView, model=Game):
     name_plural = "Games"
     icon = "fa-solid fa-gamepad"
 
-    column_list = [Game.id, Game.name, Game.status, Game.created_by, Game.created_at]
+    column_list = [Game.id, Game.name, Game.status, "creator", Game.created_at]
     column_searchable_list = [Game.name, Game.id]
     column_sortable_list = [Game.name, Game.status, Game.created_at]
     column_default_sort = ("created_at", True)
@@ -21,7 +21,7 @@ class GameAdmin(ModelView, model=Game):
         Game.status,
         Game.config_json,
         Game.flags_json,
-        Game.created_by,
+        "creator",
         Game.created_at,
         Game.user_links,
         Game.regions,
@@ -30,7 +30,7 @@ class GameAdmin(ModelView, model=Game):
         Game.sessions,
     ]
 
-    form_columns = [Game.name, Game.status, Game.config_json, Game.flags_json, Game.created_by]
+    form_columns = ["name", "status", "config_json", "flags_json", "creator"]
 
     can_export = True
     export_types = ["csv", "json"]
@@ -42,22 +42,22 @@ class GamePlayerAdmin(ModelView, model=GamePlayer):
     icon = "fa-solid fa-user-group"
 
     column_list = [
-        GamePlayer.game_id,
-        GamePlayer.user_id,
+        "game",
+        "user",
         GamePlayer.role,
-        GamePlayer.current_region_id,
-        GamePlayer.current_location_id,
+        "current_region",
+        "current_location",
         GamePlayer.joined_at,
     ]
     column_searchable_list = [GamePlayer.game_id, GamePlayer.user_id]
     column_sortable_list = [GamePlayer.role, GamePlayer.joined_at]
 
     form_columns = [
-        GamePlayer.game_id,
-        GamePlayer.user_id,
-        GamePlayer.role,
-        GamePlayer.current_region_id,
-        GamePlayer.current_location_id,
+        "game",
+        "user",
+        "role",
+        "current_region",
+        "current_location",
     ]
 
 
@@ -68,9 +68,9 @@ class SessionAdmin(ModelView, model=Session):
 
     column_list = [
         Session.id,
-        Session.game_id,
+        "game",
         Session.status,
-        Session.started_by,
+        "started_by_user",
         Session.started_at,
         Session.ended_at,
     ]
@@ -80,20 +80,20 @@ class SessionAdmin(ModelView, model=Session):
 
     column_details_list = [
         Session.id,
-        Session.game_id,
-        Session.region_id,
+        "game",
+        "region",
         Session.status,
-        Session.started_by,
+        "started_by_user",
         Session.started_at,
         Session.ended_at,
         Session.timeline_events,
     ]
 
     form_columns = [
-        Session.game_id,
-        Session.region_id,
-        Session.started_by,
-        Session.status,
+        "game",
+        "region",
+        "started_by_user",
+        "status",
     ]
 
     can_export = True
@@ -106,7 +106,7 @@ class TimelineEventAdmin(ModelView, model=TimelineEvent):
 
     column_list = [
         TimelineEvent.id,
-        TimelineEvent.session_id,
+        "session",
         TimelineEvent.seq,
         TimelineEvent.event_type,
         TimelineEvent.actor_id,
@@ -118,8 +118,8 @@ class TimelineEventAdmin(ModelView, model=TimelineEvent):
 
     column_details_list = [
         TimelineEvent.id,
-        TimelineEvent.session_id,
-        TimelineEvent.game_id,
+        "session",
+        "game",
         TimelineEvent.seq,
         TimelineEvent.event_type,
         TimelineEvent.actor_id,
@@ -130,14 +130,14 @@ class TimelineEventAdmin(ModelView, model=TimelineEvent):
     ]
 
     form_columns = [
-        TimelineEvent.session_id,
-        TimelineEvent.game_id,
-        TimelineEvent.seq,
-        TimelineEvent.event_type,
-        TimelineEvent.actor_id,
-        TimelineEvent.data_json,
-        TimelineEvent.result_json,
-        TimelineEvent.narrative,
+        "session",
+        "game",
+        "seq",
+        "event_type",
+        "actor_id",
+        "data_json",
+        "result_json",
+        "narrative",
     ]
 
     can_export = True

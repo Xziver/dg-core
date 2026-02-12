@@ -34,16 +34,25 @@ class CMYKEditorView(BaseView):
                 result = await db.execute(
                     select(Ghost).where(Ghost.game_id == game_id)
                 )
-                ghosts = [
-                    {
+                raw_ghosts = result.scalars().all()
+                for g in raw_ghosts:
+                    try:
+                        raw_cmyk = json.loads(g.cmyk_json)
+                        cmyk = {
+                            "C": int(raw_cmyk.get("C", 0)),
+                            "M": int(raw_cmyk.get("M", 0)),
+                            "Y": int(raw_cmyk.get("Y", 0)),
+                            "K": int(raw_cmyk.get("K", 0)),
+                        }
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        cmyk = {"C": 0, "M": 0, "Y": 0, "K": 0}
+                    ghosts.append({
                         "id": g.id,
                         "name": g.name,
-                        "cmyk": json.loads(g.cmyk_json),
+                        "cmyk": cmyk,
                         "hp": g.hp,
                         "hp_max": g.hp_max,
-                    }
-                    for g in result.scalars().all()
-                ]
+                    })
 
         return await self.templates.TemplateResponse(
             request,

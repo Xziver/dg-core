@@ -9,7 +9,7 @@ from tests.conftest import register_user
 @pytest.mark.asyncio
 async def test_register_user(client: AsyncClient):
     resp = await client.post("/api/auth/register", json={
-        "display_name": "NewUser",
+        "username": "NewUser",
         "platform": "qq",
         "platform_uid": "qq_12345",
     })
@@ -25,7 +25,7 @@ async def test_register_user(client: AsyncClient):
 async def test_register_duplicate_platform(client: AsyncClient):
     await register_user(client, "First", "qq", "dup_001")
     resp = await client.post("/api/auth/register", json={
-        "display_name": "Second",
+        "username": "Second",
         "platform": "qq",
         "platform_uid": "dup_001",
     })
@@ -106,7 +106,7 @@ async def test_get_me(client: AsyncClient):
     assert resp.status_code == 200
     data = resp.json()
     assert data["user_id"] == user["user_id"]
-    assert data["display_name"] == "MeUser"
+    assert data["username"] == "MeUser"
     assert len(data["platform_bindings"]) == 1
     assert data["platform_bindings"][0]["platform"] == "qq"
 
@@ -141,3 +141,84 @@ async def test_api_key_header_auth(client: AsyncClient):
     }, headers={"X-API-Key": user["api_key"]})
     assert resp.status_code == 200
     assert resp.json()["name"] == "ViaApiKey"
+
+
+# --- Password auth tests ---
+
+
+@pytest.mark.asyncio
+async def test_register_with_password(client: AsyncClient):
+    """Register with password instead of platform binding."""
+    resp = await client.post("/api/auth/register", json={
+        "username": "PasswordUser",
+        "password": "securepass123",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "user_id" in data
+    assert "api_key" in data
+    assert "access_token" in data
+
+
+@pytest.mark.asyncio
+async def test_register_with_password_and_platform(client: AsyncClient):
+    """Register with both password and platform binding."""
+    resp = await client.post("/api/auth/register", json={
+        "username": "BothAuth",
+        "platform": "discord",
+        "platform_uid": "both_001",
+        "password": "securepass123",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "user_id" in data
+
+
+@pytest.mark.asyncio
+async def test_register_requires_some_auth(client: AsyncClient):
+    """Register without password or platform should fail."""
+    resp = await client.post("/api/auth/register", json={
+        "username": "NoAuth",
+    })
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_login_by_password(client: AsyncClient):
+    """Login with username + password."""
+    await client.post("/api/auth/register", json={
+        "username": "PwdLogin",
+        "password": "mypassword",
+    })
+    resp = await client.post("/api/auth/login/password", json={
+        "username": "PwdLogin",
+        "password": "mypassword",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "access_token" in data
+    assert "user_id" in data
+
+
+@pytest.mark.asyncio
+async def test_login_wrong_password(client: AsyncClient):
+    """Login with wrong password should fail."""
+    await client.post("/api/auth/register", json={
+        "username": "WrongPwd",
+        "password": "correctpass",
+    })
+    resp = await client.post("/api/auth/login/password", json={
+        "username": "WrongPwd",
+        "password": "wrongpass",
+    })
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_nonexistent_user(client: AsyncClient):
+    """Login with non-existent username should fail."""
+    resp = await client.post("/api/auth/login/password", json={
+        "username": "Ghost",
+        "password": "anything",
+    })
+    assert resp.status_code == 401

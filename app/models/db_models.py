@@ -35,8 +35,10 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
-    display_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    username: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    email: Mapped[str | None] = mapped_column(String(256), nullable=True, unique=True)
     api_key_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     role: Mapped[str] = mapped_column(String(16), default="user")  # "user", "admin"
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
@@ -46,6 +48,9 @@ class User(Base):
     )
     game_links: Mapped[list[GamePlayer]] = relationship(back_populates="user")
     patients: Mapped[list[Patient]] = relationship(back_populates="user")
+
+    def __str__(self) -> str:
+        return f"{self.username} ({self.id[:8]})"
 
 
 class PlatformBinding(Base):
@@ -60,6 +65,9 @@ class PlatformBinding(Base):
     bound_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     user: Mapped[User] = relationship(back_populates="platform_bindings")
+
+    def __str__(self) -> str:
+        return f"{self.platform}:{self.platform_uid}"
 
     __table_args__ = (
         Index("ix_binding_platform", "platform", "platform_uid", unique=True),
@@ -83,11 +91,15 @@ class Game(Base):
     created_by: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
+    creator: Mapped[User] = relationship(foreign_keys=[created_by])
     user_links: Mapped[list[GamePlayer]] = relationship(back_populates="game")
     regions: Mapped[list[Region]] = relationship(back_populates="game")
     patients: Mapped[list[Patient]] = relationship(back_populates="game")
     ghosts: Mapped[list[Ghost]] = relationship(back_populates="game")
     sessions: Mapped[list[Session]] = relationship(back_populates="game")
+
+    def __str__(self) -> str:
+        return self.name
 
 
 class GamePlayer(Base):
@@ -117,6 +129,9 @@ class GamePlayer(Base):
     current_region: Mapped[Region | None] = relationship()
     current_location: Mapped[Location | None] = relationship()
 
+    def __str__(self) -> str:
+        return f"{self.role} ({self.user_id[:8]} in {self.game_id[:8]})"
+
 
 class Region(Base):
     """A geographical area within a game (e.g., A/B/C/D districts)."""
@@ -134,6 +149,9 @@ class Region(Base):
 
     game: Mapped[Game] = relationship(back_populates="regions")
     locations: Mapped[list[Location]] = relationship(back_populates="region")
+
+    def __str__(self) -> str:
+        return f"{self.code} - {self.name}"
 
     __table_args__ = (
         Index("ix_region_game", "game_id"),
@@ -156,6 +174,9 @@ class Location(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     region: Mapped[Region] = relationship(back_populates="locations")
+
+    def __str__(self) -> str:
+        return self.name
 
     __table_args__ = (
         Index("ix_location_region", "region_id"),
@@ -182,6 +203,9 @@ class Patient(Base):
     game: Mapped[Game] = relationship(back_populates="patients")
     ghost: Mapped[Ghost | None] = relationship(back_populates="patient", uselist=False)
 
+    def __str__(self) -> str:
+        return f"{self.name} ({self.soul_color})"
+
     __table_args__ = (
         Index("ix_patient_game", "game_id"),
     )
@@ -205,9 +229,13 @@ class Ghost(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     patient: Mapped[Patient] = relationship(back_populates="ghost")
+    creator_user: Mapped[User] = relationship(foreign_keys=[creator_user_id])
     game: Mapped[Game] = relationship(back_populates="ghosts")
     print_abilities: Mapped[list[PrintAbility]] = relationship(back_populates="ghost")
     color_fragments: Mapped[list[ColorFragment]] = relationship(back_populates="holder_ghost")
+
+    def __str__(self) -> str:
+        return self.name
 
     __table_args__ = (
         Index("ix_ghost_game", "game_id"),
@@ -225,6 +253,9 @@ class PrintAbility(Base):
     ability_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     ghost: Mapped[Ghost] = relationship(back_populates="print_abilities")
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.color})"
 
 
 class Session(Base):
@@ -247,7 +278,11 @@ class Session(Base):
 
     game: Mapped[Game] = relationship(back_populates="sessions")
     region: Mapped[Region | None] = relationship()
+    started_by_user: Mapped[User] = relationship(foreign_keys=[started_by])
     timeline_events: Mapped[list[TimelineEvent]] = relationship(back_populates="session")
+
+    def __str__(self) -> str:
+        return f"Session {self.id[:8]} ({self.status})"
 
     __table_args__ = (
         Index("ix_session_game", "game_id"),
@@ -269,6 +304,10 @@ class TimelineEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     session: Mapped[Session] = relationship(back_populates="timeline_events")
+    game: Mapped[Game] = relationship()
+
+    def __str__(self) -> str:
+        return f"#{self.seq} {self.event_type}"
 
     __table_args__ = (
         Index("ix_timeline_session_seq", "session_id", "seq"),
@@ -286,6 +325,10 @@ class ColorFragment(Base):
     value: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
 
     holder_ghost: Mapped[Ghost] = relationship(back_populates="color_fragments")
+    game: Mapped[Game] = relationship()
+
+    def __str__(self) -> str:
+        return f"{self.color} ({self.value})"
 
     __table_args__ = (
         Index("ix_fragment_game", "game_id"),

@@ -1,4 +1,4 @@
-"""Authentication utilities — JWT tokens, API key validation, platform lookup."""
+"""Authentication utilities — JWT tokens, API key validation, password hashing, platform lookup."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
+import bcrypt
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -17,6 +18,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.infra.config import settings
 from app.infra.db import get_db
 from app.models.db_models import PlatformBinding, User
+
+
+# --- Password hashing ---
+
+
+def hash_password(password: str) -> str:
+    """Hash a password using bcrypt."""
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plain password against a bcrypt hash."""
+    return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
 
 
 # --- Token schemas ---
@@ -95,6 +109,24 @@ async def resolve_user_by_platform(
         )
     )
     return result.scalar_one_or_none()
+
+
+async def authenticate_by_password(
+    db: AsyncSession, username: str, password: str
+) -> User | None:
+    """Authenticate a user by username + password. Returns User or None."""
+    result = await db.execute(
+        select(User).where(
+            User.username == username,
+            User.is_active == True,  # noqa: E712
+        )
+    )
+    user = result.scalar_one_or_none()
+    if user is None or user.password_hash is None:
+        return None
+    if not verify_password(password, user.password_hash):
+        return None
+    return user
 
 
 # --- FastAPI Dependencies ---

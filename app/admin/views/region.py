@@ -14,7 +14,7 @@ class RegionAdmin(ModelView, model=Region):
         Region.id,
         Region.code,
         Region.name,
-        Region.game_id,
+        "game",
         Region.sort_order,
         Region.created_at,
     ]
@@ -34,12 +34,12 @@ class RegionAdmin(ModelView, model=Region):
     ]
 
     form_columns = [
-        Region.game_id,
-        Region.code,
-        Region.name,
-        Region.description,
-        Region.metadata_json,
-        Region.sort_order,
+        "game",
+        "code",
+        "name",
+        "description",
+        "metadata_json",
+        "sort_order",
     ]
 
     can_export = True
@@ -54,7 +54,7 @@ class LocationAdmin(ModelView, model=Location):
     column_list = [
         Location.id,
         Location.name,
-        Location.region_id,
+        "region",
         Location.sort_order,
         Location.created_at,
     ]
@@ -73,12 +73,12 @@ class LocationAdmin(ModelView, model=Location):
     ]
 
     form_columns = [
-        Location.region_id,
-        Location.name,
-        Location.description,
-        Location.content,
-        Location.metadata_json,
-        Location.sort_order,
+        "region",
+        "name",
+        "description",
+        "content",
+        "metadata_json",
+        "sort_order",
     ]
 
     can_export = True

@@ -27,8 +27,8 @@ class PatientAdmin(ModelView, model=Patient):
         Patient.id,
         Patient.name,
         Patient.soul_color,
-        Patient.user_id,
-        Patient.game_id,
+        "user",
+        "game",
         Patient.created_at,
     ]
     column_searchable_list = [Patient.name, Patient.id]
@@ -51,16 +51,16 @@ class PatientAdmin(ModelView, model=Patient):
     ]
 
     form_columns = [
-        Patient.user_id,
-        Patient.game_id,
-        Patient.name,
-        Patient.soul_color,
-        Patient.gender,
-        Patient.age,
-        Patient.identity,
-        Patient.portrait_url,
-        Patient.personality_archives_json,
-        Patient.ideal_projection,
+        "user",
+        "game",
+        "name",
+        "soul_color",
+        "gender",
+        "age",
+        "identity",
+        "portrait_url",
+        "personality_archives_json",
+        "ideal_projection",
     ]
 
     can_export = True
@@ -75,11 +75,11 @@ class GhostAdmin(ModelView, model=Ghost):
     column_list = [
         Ghost.id,
         Ghost.name,
-        Ghost.patient_id,
+        "patient",
         Ghost.cmyk_json,
         Ghost.hp,
         Ghost.hp_max,
-        Ghost.game_id,
+        "game",
     ]
     column_searchable_list = [Ghost.name, Ghost.id]
     column_sortable_list = [Ghost.name, Ghost.hp, Ghost.created_at]
@@ -93,6 +93,7 @@ class GhostAdmin(ModelView, model=Ghost):
         Ghost.name,
         Ghost.patient,
         Ghost.game,
+        "creator_user",
         Ghost.cmyk_json,
         Ghost.hp,
         Ghost.hp_max,
@@ -104,15 +105,15 @@ class GhostAdmin(ModelView, model=Ghost):
     ]
 
     form_columns = [
-        Ghost.patient_id,
-        Ghost.creator_user_id,
-        Ghost.game_id,
-        Ghost.name,
-        Ghost.appearance,
-        Ghost.personality,
-        Ghost.cmyk_json,
-        Ghost.hp,
-        Ghost.hp_max,
+        "patient",
+        "creator_user",
+        "game",
+        "name",
+        "appearance",
+        "personality",
+        "cmyk_json",
+        "hp",
+        "hp_max",
     ]
 
     can_export = True
@@ -129,17 +130,17 @@ class PrintAbilityAdmin(ModelView, model=PrintAbility):
         PrintAbility.name,
         PrintAbility.color,
         PrintAbility.ability_count,
-        PrintAbility.ghost_id,
+        "ghost",
     ]
     column_searchable_list = [PrintAbility.name]
     column_sortable_list = [PrintAbility.name, PrintAbility.color]
 
     form_columns = [
-        PrintAbility.ghost_id,
-        PrintAbility.name,
-        PrintAbility.description,
-        PrintAbility.color,
-        PrintAbility.ability_count,
+        "ghost",
+        "name",
+        "description",
+        "color",
+        "ability_count",
     ]
 
 
@@ -152,14 +153,14 @@ class ColorFragmentAdmin(ModelView, model=ColorFragment):
         ColorFragment.id,
         ColorFragment.color,
         ColorFragment.value,
-        ColorFragment.holder_ghost_id,
-        ColorFragment.game_id,
+        "holder_ghost",
+        "game",
     ]
     column_sortable_list = [ColorFragment.color, ColorFragment.value]
 
     form_columns = [
-        ColorFragment.game_id,
-        ColorFragment.holder_ghost_id,
-        ColorFragment.color,
-        ColorFragment.value,
+        "game",
+        "holder_ghost",
+        "color",
+        "value",
     ]

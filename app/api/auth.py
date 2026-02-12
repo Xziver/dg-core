@@ -11,9 +11,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infra.auth import (
+    authenticate_by_password,
     create_access_token,
     generate_api_key,
     get_current_user_jwt,
+    hash_password,
     resolve_user_by_platform,
 )
 from app.infra.db import get_db
@@ -26,9 +28,11 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 class RegisterRequest(BaseModel):
-    display_name: str
-    platform: str  # Initial platform binding
-    platform_uid: str  # Platform-specific user ID
+    username: str
+    platform: str | None = None
+    platform_uid: str | None = None
+    password: str | None = None
+    email: str | None = None
 
 
 class PlatformLoginRequest(BaseModel):
@@ -38,6 +42,11 @@ class PlatformLoginRequest(BaseModel):
 
 class ApiKeyLoginRequest(BaseModel):
     api_key: str
+
+
+class PasswordLoginRequest(BaseModel):
+    username: str
+    password: str
 
 
 class BindPlatformRequest(BaseModel):
@@ -53,22 +62,39 @@ async def register(
     req: RegisterRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
-    """Register a new user with an initial platform binding."""
-    existing = await resolve_user_by_platform(db, req.platform, req.platform_uid)
-    if existing is not None:
-        raise HTTPException(status_code=409, detail="Platform identity already registered")
+    """Register a new user with optional platform binding and/or password."""
+    has_platform = req.platform is not None and req.platform_uid is not None
+    has_password = req.password is not None
+
+    if not has_platform and not has_password:
+        raise HTTPException(
+            status_code=400,
+            detail="Must provide either platform+platform_uid or password",
+        )
+
+    if has_platform:
+        existing = await resolve_user_by_platform(db, req.platform, req.platform_uid)
+        if existing is not None:
+            raise HTTPException(status_code=409, detail="Platform identity already registered")
 
     raw_key, key_hash = generate_api_key()
+    password_hash_value = hash_password(req.password) if has_password else None
 
-    user = User(display_name=req.display_name, api_key_hash=key_hash)
+    user = User(
+        username=req.username,
+        api_key_hash=key_hash,
+        password_hash=password_hash_value,
+        email=req.email,
+    )
     db.add(user)
     await db.flush()
 
-    binding = PlatformBinding(
-        user_id=user.id, platform=req.platform, platform_uid=req.platform_uid
-    )
-    db.add(binding)
-    await db.flush()
+    if has_platform:
+        binding = PlatformBinding(
+            user_id=user.id, platform=req.platform, platform_uid=req.platform_uid
+        )
+        db.add(binding)
+        await db.flush()
 
     token = create_access_token(user.id)
 
@@ -122,6 +148,24 @@ async def login_by_api_key(
     }
 
 
+@router.post("/login/password")
+async def login_by_password(
+    req: PasswordLoginRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Login via username + password. Returns JWT token."""
+    user = await authenticate_by_password(db, req.username, req.password)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    token = create_access_token(user.id)
+    return {
+        "user_id": user.id,
+        "access_token": token.access_token,
+        "expires_at": token.expires_at.isoformat(),
+    }
+
+
 @router.post("/bind-platform")
 async def bind_platform(
     req: BindPlatformRequest,
@@ -165,7 +209,7 @@ async def get_me(
 
     return {
         "user_id": user.id,
-        "display_name": user.display_name,
+        "username": user.username,
         "role": user.role,
         "is_active": user.is_active,
         "created_at": user.created_at.isoformat(),

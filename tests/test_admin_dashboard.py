@@ -62,10 +62,11 @@ def _make_mock_user(user_id="admin-001", role="admin", is_active=True, api_key="
     """Create a mock User object."""
     mock_user = type("User", (), {
         "id": user_id,
-        "display_name": "Admin",
+        "username": "Admin",
         "role": role,
         "is_active": is_active,
         "api_key_hash": hashlib.sha256(api_key.encode()).hexdigest(),
+        "password_hash": None,
     })()
     return mock_user
 

@@ -49,16 +49,16 @@
         <div class="mb-3 text-center">
           <div id="preview-{{ ghost.id }}"
                style="width: 100%; height: 60px; border-radius: 8px; border: 1px solid #dee2e6;
-                      background-color: rgb({{ 255 * (1 - ghost.cmyk.C / 10) * (1 - ghost.cmyk.K / 10) | int }}, {{ 255 * (1 - ghost.cmyk.M / 10) * (1 - ghost.cmyk.K / 10) | int }}, {{ 255 * (1 - ghost.cmyk.Y / 10) * (1 - ghost.cmyk.K / 10) | int }});">
+                      background-color: rgb({{ (255 * (1 - ghost.cmyk.C / 10) * (1 - ghost.cmyk.K / 10)) | int }}, {{ (255 * (1 - ghost.cmyk.M / 10) * (1 - ghost.cmyk.K / 10)) | int }}, {{ (255 * (1 - ghost.cmyk.Y / 10) * (1 - ghost.cmyk.K / 10)) | int }});">
           </div>
         </div>
 
         <!-- CMYK sliders -->
         {% set colors = [
-          ('C', 'Cyan', '#00BCD4', ghost.cmyk.C),
-          ('M', 'Magenta', '#E91E63', ghost.cmyk.M),
-          ('Y', 'Yellow', '#FFC107', ghost.cmyk.Y),
-          ('K', 'Black', '#424242', ghost.cmyk.K)
+          ('C', 'Cyan', '#00BCD4', ghost.cmyk.C | default(0)),
+          ('M', 'Magenta', '#E91E63', ghost.cmyk.M | default(0)),
+          ('Y', 'Yellow', '#FFC107', ghost.cmyk.Y | default(0)),
+          ('K', 'Black', '#424242', ghost.cmyk.K | default(0))
         ] %}
         {% for key, label, color, value in colors %}
         <div class="mb-2">
