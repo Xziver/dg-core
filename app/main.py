@@ -5,6 +5,7 @@ from importlib.metadata import version, PackageNotFoundError
 
 from fastapi import FastAPI
 
+from app.admin import setup_admin
 from app.api import admin, auth, bot, web
 from app.infra.db import init_db
 
@@ -32,6 +33,8 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(bot.router)
 app.include_router(web.router)
+
+setup_admin(app)
 
 
 @app.get("/health")

@@ -1,0 +1,185 @@
+{% extends "sqladmin/layout.html" %}
+
+{% block content_header %}
+<div class="row align-items-center">
+  <div class="col">
+    <h2 class="page-title">Dashboard</h2>
+    <div class="page-pretitle">DG-Core Game Engine Overview</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Stat cards -->
+<div class="col-sm-6 col-lg-3">
+  <div class="card">
+    <div class="card-body">
+      <div class="d-flex align-items-center">
+        <div class="subheader">Users</div>
+      </div>
+      <div class="h1 mb-0">{{ stats.users }}</div>
+    </div>
+  </div>
+</div>
+<div class="col-sm-6 col-lg-3">
+  <div class="card">
+    <div class="card-body">
+      <div class="d-flex align-items-center">
+        <div class="subheader">Games</div>
+      </div>
+      <div class="h1 mb-0">{{ stats.games }}</div>
+      <div class="text-muted">{{ stats.active_games }} active</div>
+    </div>
+  </div>
+</div>
+<div class="col-sm-6 col-lg-3">
+  <div class="card">
+    <div class="card-body">
+      <div class="d-flex align-items-center">
+        <div class="subheader">Sessions</div>
+      </div>
+      <div class="h1 mb-0">{{ stats.sessions }}</div>
+      <div class="text-muted">{{ stats.active_sessions }} active</div>
+    </div>
+  </div>
+</div>
+<div class="col-sm-6 col-lg-3">
+  <div class="card">
+    <div class="card-body">
+      <div class="d-flex align-items-center">
+        <div class="subheader">Timeline Events</div>
+      </div>
+      <div class="h1 mb-0">{{ stats.timeline_events }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="col-sm-6 col-lg-3">
+  <div class="card">
+    <div class="card-body">
+      <div class="d-flex align-items-center">
+        <div class="subheader">Patients</div>
+      </div>
+      <div class="h1 mb-0">{{ stats.patients }}</div>
+    </div>
+  </div>
+</div>
+<div class="col-sm-6 col-lg-3">
+  <div class="card">
+    <div class="card-body">
+      <div class="d-flex align-items-center">
+        <div class="subheader">Ghosts</div>
+      </div>
+      <div class="h1 mb-0">{{ stats.ghosts }}</div>
+    </div>
+  </div>
+</div>
+<div class="col-sm-6 col-lg-3">
+  <div class="card">
+    <div class="card-body">
+      <div class="d-flex align-items-center">
+        <div class="subheader">Regions</div>
+      </div>
+      <div class="h1 mb-0">{{ stats.regions }}</div>
+    </div>
+  </div>
+</div>
+<div class="col-sm-6 col-lg-3">
+  <div class="card">
+    <div class="card-body">
+      <div class="d-flex align-items-center">
+        <div class="subheader">Locations</div>
+      </div>
+      <div class="h1 mb-0">{{ stats.locations }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Recent games -->
+<div class="col-12">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Recent Games</h3>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Created By</th>
+            <th>Created At</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for game in recent_games %}
+          <tr>
+            <td>{{ game.name }}</td>
+            <td>
+              {% if game.status == 'active' %}
+              <span class="badge bg-green">{{ game.status }}</span>
+              {% elif game.status == 'preparing' %}
+              <span class="badge bg-blue">{{ game.status }}</span>
+              {% elif game.status == 'paused' %}
+              <span class="badge bg-yellow">{{ game.status }}</span>
+              {% else %}
+              <span class="badge bg-secondary">{{ game.status }}</span>
+              {% endif %}
+            </td>
+            <td>{{ game.created_by }}</td>
+            <td>{{ game.created_at.strftime('%Y-%m-%d %H:%M') if game.created_at else '' }}</td>
+          </tr>
+          {% endfor %}
+          {% if not recent_games %}
+          <tr><td colspan="4" class="text-muted text-center">No games yet</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Recent sessions -->
+<div class="col-12">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Recent Sessions</h3>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Game</th>
+            <th>Status</th>
+            <th>Started By</th>
+            <th>Started At</th>
+            <th>Ended At</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for session in recent_sessions %}
+          <tr>
+            <td>{{ session.id[:8] }}...</td>
+            <td>{{ session.game_id[:8] }}...</td>
+            <td>
+              {% if session.status == 'active' %}
+              <span class="badge bg-green">active</span>
+              {% else %}
+              <span class="badge bg-secondary">ended</span>
+              {% endif %}
+            </td>
+            <td>{{ session.started_by }}</td>
+            <td>{{ session.started_at.strftime('%Y-%m-%d %H:%M') if session.started_at else '' }}</td>
+            <td>{{ session.ended_at.strftime('%Y-%m-%d %H:%M') if session.ended_at else '-' }}</td>
+          </tr>
+          {% endfor %}
+          {% if not recent_sessions %}
+          <tr><td colspan="6" class="text-muted text-center">No sessions yet</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

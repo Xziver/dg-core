@@ -10,7 +10,7 @@
 # 安装依赖
 uv sync --extra dev
 
-# 运行测试（36 个，内存 SQLite，无需外部服务）
+# 运行测试（45 个，内存 SQLite，无需外部服务）
 pytest -v
 
 # 启动开发服务器
@@ -19,6 +19,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 启动后：
 - Swagger 文档：`http://localhost:8000/docs`
+- 管理后台：`http://localhost:8000/admin/`
 - 健康检查：`http://localhost:8000/health` → `{"status": "ok", "engine": "dg-core", "version": "0.1.0"}`
 
 ## 项目结构
@@ -32,6 +33,11 @@ dg-core/
 │   │   ├── admin.py          # 管理 API (Game/Region/Character CRUD)
 │   │   ├── bot.py            # 游戏 API (事件提交 + 查询)
 │   │   └── web.py            # WebSocket 实时推送
+│   ├── admin/                 # 管理后台 (sqladmin)
+│   │   ├── auth.py            # 管理员认证 (API Key + role=admin)
+│   │   ├── views/             # 12 个 ORM 模型的 CRUD 视图
+│   │   └── custom/            # 自定义视图 (仪表盘/CMYK编辑器/批量导入)
+│   ├── templates/admin/       # 自定义 Jinja2 模板
 │   ├── domain/               # 核心领域逻辑
 │   │   ├── dispatcher.py     # 事件分发器（唯一入口）
 │   │   ├── game.py           # 游戏管理 (Game 生命周期 + flags)
@@ -59,7 +65,8 @@ dg-core/
 │       ├── auth.py           # JWT + API Key 认证
 │       ├── ws_manager.py     # WebSocket 连接管理 + 广播
 │       └── cache.py          # 内存缓存
-├── tests/                    # 测试 (36 个)
+├── tests/                    # 测试 (45 个)
+├── scripts/                  # 管理脚本 (promote_admin.py)
 ├── alembic/                  # 数据库迁移
 ├── docs/                     # 规范文档
 ├── pyproject.toml
@@ -120,6 +127,36 @@ QQ群: /attack ──► Bot ──► POST /api/bot/events ──► dispatcher
 ```
 
 Web 客户端连接：`ws://host/api/web/ws/{game_id}?token=<jwt>`
+
+## 管理后台
+
+基于 [sqladmin](https://github.com/aminalaee/sqladmin) 的 Django 风格管理界面，无需直接操作数据库。
+
+### 设置管理员
+
+```bash
+# 1. 注册用户
+curl -X POST http://localhost:8000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"display_name": "Admin", "platform": "web", "platform_uid": "admin"}'
+# 记下返回的 user_id
+
+# 2. 提升为管理员
+python scripts/promote_admin.py <user_id>
+```
+
+### 登录
+
+访问 `http://localhost:8000/admin/login`，用户名任意填写，密码填写注册时返回的 **API Key**。
+
+### 功能
+
+| 页面 | URL | 说明 |
+|------|-----|------|
+| 模型管理 | `/admin/` | 所有 12 个 ORM 模型的列表/详情/创建/编辑/删除 |
+| 仪表盘 | `/admin/dashboard` | 游戏状态总览（用户数、游戏数、活跃会话等） |
+| CMYK 编辑器 | `/admin/cmyk-editor` | 可视化滑块编辑 Ghost 的 CMYK 属性，实时颜色预览 |
+| 批量操作 | `/admin/bulk` | CSV 导入/导出地区、地点、患者、幽灵数据 |
 
 ## 配置
 
@@ -205,11 +242,12 @@ Web 客户端连接：`ws://host/api/web/ws/{game_id}?token=<jwt>`
 ## 测试
 
 ```bash
-pytest                          # 全部 36 个测试
+pytest                          # 全部 45 个测试
 pytest tests/test_dice.py       # 骰子单元测试 (8)
 pytest tests/test_api.py        # API 集成测试 (8)
 pytest tests/test_auth.py       # 认证测试 (12)
 pytest tests/test_websocket.py  # WebSocket 测试 (7)
+pytest tests/test_admin_dashboard.py  # 管理后台测试 (9)
 pytest tests/test_e2e.py        # 端到端场景测试 (1)
 ```
 
@@ -225,4 +263,4 @@ alembic downgrade -1                          # 回退一步
 
 ## 技术栈
 
-Python 3.12 / FastAPI / SQLAlchemy 2.0 async / Pydantic 2.0 / python-jose (JWT) / Alembic / ChromaDB / httpx / WebSocket / pytest
+Python 3.12 / FastAPI / SQLAlchemy 2.0 async / sqladmin / Pydantic 2.0 / python-jose (JWT) / Alembic / ChromaDB / httpx / WebSocket / pytest

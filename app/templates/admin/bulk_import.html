@@ -1,0 +1,47 @@
+{% extends "sqladmin/layout.html" %}
+
+{% block content_header %}
+<div class="row align-items-center">
+  <div class="col">
+    <h2 class="page-title">Bulk Operations</h2>
+    <div class="page-pretitle">Import and export data via CSV</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Import forms -->
+{% set entities = [
+  ('regions', 'Regions', 'game_id, code, name, description, sort_order'),
+  ('locations', 'Locations', 'region_id, name, description, content, sort_order'),
+  ('patients', 'Patients', 'user_id, game_id, name, soul_color, gender, age, identity'),
+  ('ghosts', 'Ghosts', 'patient_id, creator_user_id, game_id, name, cmyk_json, hp, hp_max')
+] %}
+
+{% for key, label, columns in entities %}
+<div class="col-lg-6">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">{{ label }}</h3>
+    </div>
+    <div class="card-body">
+      <form method="post" action="/admin/bulk/import-{{ key }}" enctype="multipart/form-data">
+        <div class="mb-3">
+          <label class="form-label">Upload CSV</label>
+          <input type="file" name="file" accept=".csv" class="form-control" required>
+          <small class="form-hint">Columns: {{ columns }}</small>
+        </div>
+        <div class="d-flex gap-2">
+          <button type="submit" class="btn btn-primary">
+            <i class="fa-solid fa-file-import me-1"></i> Import
+          </button>
+          <a href="/admin/bulk/export-{{ key }}" class="btn btn-outline-secondary">
+            <i class="fa-solid fa-file-export me-1"></i> Export CSV
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}
