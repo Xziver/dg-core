@@ -45,6 +45,7 @@ class GamePlayerAdmin(ModelView, model=GamePlayer):
         "game",
         "user",
         GamePlayer.role,
+        "active_patient",
         "current_region",
         "current_location",
         GamePlayer.joined_at,
@@ -56,6 +57,7 @@ class GamePlayerAdmin(ModelView, model=GamePlayer):
         "game",
         "user",
         "role",
+        "active_patient",
         "current_region",
         "current_location",
     ]

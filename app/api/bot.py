@@ -8,6 +8,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pydantic import BaseModel
+
 from app.domain import game as game_mod, session as session_mod, timeline
 from app.domain.dispatcher import dispatch
 from app.infra.auth import get_current_user
@@ -48,7 +50,11 @@ async def get_game(
         "status": game.status,
         "config": json.loads(game.config_json) if game.config_json else None,
         "players": [
-            {"user_id": p.user_id, "role": p.role}
+            {
+                "user_id": p.user_id,
+                "role": p.role,
+                "active_patient_id": p.active_patient_id,
+            }
             for p in players
         ],
     }
@@ -108,4 +114,29 @@ async def get_game_timeline(
             }
             for e in events
         ],
+    }
+
+
+class SwitchCharacterRequest(BaseModel):
+    patient_id: str
+
+
+@router.put("/games/{game_id}/active-character")
+async def switch_active_character(
+    game_id: str,
+    body: SwitchCharacterRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Switch the player's active character in a game. PL only, not during active sessions."""
+    try:
+        gp = await game_mod.switch_character(
+            db, game_id, current_user.id, body.patient_id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {
+        "game_id": gp.game_id,
+        "user_id": gp.user_id,
+        "active_patient_id": gp.active_patient_id,
     }

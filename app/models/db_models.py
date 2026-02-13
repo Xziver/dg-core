@@ -116,6 +116,9 @@ class GamePlayer(Base):
     role: Mapped[str] = mapped_column(
         Enum("KP", "PL", name="player_role"), nullable=False
     )
+    active_patient_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("patients.id"), nullable=True
+    )
     current_region_id: Mapped[str | None] = mapped_column(
         String(32), ForeignKey("regions.id"), nullable=True
     )
@@ -126,6 +129,7 @@ class GamePlayer(Base):
 
     game: Mapped[Game] = relationship(back_populates="user_links")
     user: Mapped[User] = relationship(back_populates="game_links")
+    active_patient: Mapped[Patient | None] = relationship(foreign_keys=[active_patient_id])
     current_region: Mapped[Region | None] = relationship()
     current_location: Mapped[Location | None] = relationship()
 

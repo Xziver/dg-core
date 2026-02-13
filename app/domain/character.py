@@ -7,7 +7,7 @@ import json
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.db_models import ColorFragment, Ghost, Patient, PrintAbility
+from app.models.db_models import ColorFragment, GamePlayer, Ghost, Patient, PrintAbility
 
 
 # --- Patient ---
@@ -39,6 +39,19 @@ async def create_patient(
     )
     db.add(patient)
     await db.flush()
+
+    # Auto-activate if this is the player's first patient in the game
+    gp_result = await db.execute(
+        select(GamePlayer).where(
+            GamePlayer.game_id == game_id,
+            GamePlayer.user_id == user_id,
+        )
+    )
+    gp = gp_result.scalar_one_or_none()
+    if gp is not None and gp.role == "PL" and gp.active_patient_id is None:
+        gp.active_patient_id = patient.id
+        await db.flush()
+
     return patient
 
 

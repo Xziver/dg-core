@@ -382,13 +382,21 @@ async def _handle_location_transition(db: AsyncSession, event: GameEvent) -> Eng
 async def _find_player_ghost(
     db: AsyncSession, game_id: str, user_id: str
 ) -> character.Ghost | None:
-    """Find the ghost belonging to this user's patient in this game."""
+    """Find the ghost for this user's active patient in this game."""
     from sqlalchemy import select
-    from app.models.db_models import Ghost, Patient
+    from app.models.db_models import GamePlayer, Ghost
+
+    gp_result = await db.execute(
+        select(GamePlayer).where(
+            GamePlayer.game_id == game_id,
+            GamePlayer.user_id == user_id,
+        )
+    )
+    gp = gp_result.scalar_one_or_none()
+    if gp is None or gp.active_patient_id is None:
+        return None
 
     result = await db.execute(
-        select(Ghost)
-        .join(Patient, Ghost.patient_id == Patient.id)
-        .where(Patient.user_id == user_id, Patient.game_id == game_id)
+        select(Ghost).where(Ghost.patient_id == gp.active_patient_id)
     )
     return result.scalar_one_or_none()

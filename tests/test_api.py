@@ -162,3 +162,168 @@ async def test_region_crud(client: AsyncClient):
     locs = await client.get(f"/api/admin/regions/{region_a_id}/locations", headers=h)
     assert locs.status_code == 200
     assert len(locs.json()["locations"]) == 1
+
+
+# --- Switch character tests ---
+
+
+async def _setup_game_with_player(client: AsyncClient):
+    """Helper: create a KP, a game, a PL joined to that game."""
+    kp = await register_user(client, "KP", "test", "kp_sc")
+    pl = await register_user(client, "PL", "test", "pl_sc")
+
+    game_resp = await client.post("/api/admin/games", json={
+        "name": "SwitchCharGame",
+    }, headers=kp["headers"])
+    game_id = game_resp.json()["game_id"]
+
+    # Add PL to game
+    await client.post(f"/api/admin/games/{game_id}/players", json={
+        "user_id": pl["user_id"], "role": "PL",
+    }, headers=kp["headers"])
+
+    return kp, pl, game_id
+
+
+async def _create_patient_for(client: AsyncClient, headers: dict, user_id: str, game_id: str, name: str):
+    """Helper: create a patient and return patient_id."""
+    resp = await client.post("/api/admin/characters/patient", json={
+        "user_id": user_id, "game_id": game_id, "name": name, "soul_color": "C",
+    }, headers=headers)
+    assert resp.status_code == 200
+    return resp.json()["patient_id"]
+
+
+@pytest.mark.asyncio
+async def test_auto_activate_first_patient(client: AsyncClient):
+    """First patient created for a PL auto-sets active_patient_id."""
+    kp, pl, game_id = await _setup_game_with_player(client)
+
+    patient_id = await _create_patient_for(
+        client, pl["headers"], pl["user_id"], game_id, "患者一号"
+    )
+
+    # Check game response includes active_patient_id
+    game_resp = await client.get(f"/api/bot/games/{game_id}", headers=pl["headers"])
+    players = game_resp.json()["players"]
+    pl_data = next(p for p in players if p["user_id"] == pl["user_id"])
+    assert pl_data["active_patient_id"] == patient_id
+
+
+@pytest.mark.asyncio
+async def test_auto_activate_does_not_overwrite(client: AsyncClient):
+    """Second patient does NOT overwrite the existing active_patient_id."""
+    kp, pl, game_id = await _setup_game_with_player(client)
+
+    first_id = await _create_patient_for(
+        client, pl["headers"], pl["user_id"], game_id, "患者一号"
+    )
+    await _create_patient_for(
+        client, pl["headers"], pl["user_id"], game_id, "患者二号"
+    )
+
+    game_resp = await client.get(f"/api/bot/games/{game_id}", headers=pl["headers"])
+    pl_data = next(
+        p for p in game_resp.json()["players"] if p["user_id"] == pl["user_id"]
+    )
+    assert pl_data["active_patient_id"] == first_id
+
+
+@pytest.mark.asyncio
+async def test_switch_character_success(client: AsyncClient):
+    """PL can switch active character between sessions."""
+    kp, pl, game_id = await _setup_game_with_player(client)
+
+    first_id = await _create_patient_for(
+        client, pl["headers"], pl["user_id"], game_id, "患者一号"
+    )
+    second_id = await _create_patient_for(
+        client, pl["headers"], pl["user_id"], game_id, "患者二号"
+    )
+
+    # Switch to second character
+    resp = await client.put(
+        f"/api/bot/games/{game_id}/active-character",
+        json={"patient_id": second_id},
+        headers=pl["headers"],
+    )
+    assert resp.status_code == 200
+    assert resp.json()["active_patient_id"] == second_id
+
+    # Verify via game endpoint
+    game_resp = await client.get(f"/api/bot/games/{game_id}", headers=pl["headers"])
+    pl_data = next(
+        p for p in game_resp.json()["players"] if p["user_id"] == pl["user_id"]
+    )
+    assert pl_data["active_patient_id"] == second_id
+
+
+@pytest.mark.asyncio
+async def test_switch_character_blocked_during_active_session(client: AsyncClient):
+    """Cannot switch character while a session is active."""
+    kp, pl, game_id = await _setup_game_with_player(client)
+
+    first_id = await _create_patient_for(
+        client, pl["headers"], pl["user_id"], game_id, "患者一号"
+    )
+    second_id = await _create_patient_for(
+        client, pl["headers"], pl["user_id"], game_id, "患者二号"
+    )
+
+    # Start a session via event
+    await client.post("/api/bot/events", json={
+        "game_id": game_id,
+        "user_id": kp["user_id"],
+        "payload": {"event_type": "session_start"},
+    }, headers=kp["headers"])
+
+    # Try to switch — should be blocked
+    resp = await client.put(
+        f"/api/bot/games/{game_id}/active-character",
+        json={"patient_id": second_id},
+        headers=pl["headers"],
+    )
+    assert resp.status_code == 400
+    assert "active session" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_switch_character_kp_rejected(client: AsyncClient):
+    """KP cannot set an active character."""
+    kp, pl, game_id = await _setup_game_with_player(client)
+
+    patient_id = await _create_patient_for(
+        client, kp["headers"], kp["user_id"], game_id, "KP角色"
+    )
+
+    resp = await client.put(
+        f"/api/bot/games/{game_id}/active-character",
+        json={"patient_id": patient_id},
+        headers=kp["headers"],
+    )
+    assert resp.status_code == 400
+    assert "PL" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_switch_character_wrong_patient(client: AsyncClient):
+    """Cannot switch to a patient belonging to another user."""
+    kp, pl, game_id = await _setup_game_with_player(client)
+    other = await register_user(client, "Other", "test", "other_sc")
+
+    # Add other player and create their patient
+    await client.post(f"/api/admin/games/{game_id}/players", json={
+        "user_id": other["user_id"], "role": "PL",
+    }, headers=kp["headers"])
+    other_patient_id = await _create_patient_for(
+        client, other["headers"], other["user_id"], game_id, "别人的角色"
+    )
+
+    # PL tries to switch to other's patient
+    resp = await client.put(
+        f"/api/bot/games/{game_id}/active-character",
+        json={"patient_id": other_patient_id},
+        headers=pl["headers"],
+    )
+    assert resp.status_code == 400
+    assert "not found" in resp.json()["detail"]
