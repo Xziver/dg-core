@@ -8,7 +8,6 @@ from fastapi.openapi.utils import get_openapi
 
 from app.admin import setup_admin
 from app.api import admin, auth, bot, web
-from app.infra.db import init_db
 
 try:
     __version__ = version("dg-core")
@@ -18,8 +17,7 @@ except PackageNotFoundError:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
-    # Startup: create tables (dev mode)
-    await init_db()
+    # Schema managed by Alembic — run `alembic upgrade head` before starting.
     yield
 
 

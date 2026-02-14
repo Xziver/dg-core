@@ -34,5 +34,10 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
+    @property
+    def database_url_sync(self) -> str:
+        """Sync version of database_url for Alembic CLI."""
+        return self.database_url.replace("+aiosqlite", "").replace("+asyncpg", "")
+
 
 settings = Settings()

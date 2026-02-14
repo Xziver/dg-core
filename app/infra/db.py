@@ -29,7 +29,7 @@ async def get_db() -> AsyncSession:  # type: ignore[misc]
 
 
 async def init_db() -> None:
-    """Create tables (for dev/testing; production uses Alembic)."""
+    """Create all tables directly (for scripts/testing only; app startup uses Alembic)."""
     from app.models.db_models import Base
 
     async with engine.begin() as conn:
