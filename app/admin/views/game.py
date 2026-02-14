@@ -80,16 +80,19 @@ class SessionAdmin(ModelView, model=Session):
         Session.id,
         "game",
         "region",
+        "location",
         Session.status,
         "started_by_user",
         Session.started_at,
         Session.ended_at,
         Session.timeline_events,
+        Session.session_players,
     ]
 
     form_columns = [
         "game",
         "region",
+        "location",
         "started_by_user",
         "status",
     ]

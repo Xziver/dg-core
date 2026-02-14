@@ -87,6 +87,8 @@ class GhostAdmin(ModelView, model=Ghost):
         Ghost.cmyk_json,
         Ghost.hp,
         Ghost.hp_max,
+        Ghost.mp,
+        Ghost.mp_max,
         "game",
     ]
     column_searchable_list = [Ghost.name, Ghost.id]
@@ -106,6 +108,8 @@ class GhostAdmin(ModelView, model=Ghost):
         Ghost.cmyk_json,
         Ghost.hp,
         Ghost.hp_max,
+        Ghost.mp,
+        Ghost.mp_max,
         Ghost.appearance,
         Ghost.personality,
         Ghost.origin_name,
@@ -132,6 +136,8 @@ class GhostAdmin(ModelView, model=Ghost):
         "cmyk_json",
         "hp",
         "hp_max",
+        "mp",
+        "mp_max",
         "origin_name",
         "origin_identity",
         "origin_soul_color",

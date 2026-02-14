@@ -25,8 +25,8 @@ async def create_game(
     db.add(game)
     await db.flush()
 
-    # Creator auto-joins as KP
-    link = GamePlayer(game_id=game.id, user_id=created_by, role="KP")
+    # Creator auto-joins as DM
+    link = GamePlayer(game_id=game.id, user_id=created_by, role="DM")
     db.add(link)
     await db.flush()
     return game

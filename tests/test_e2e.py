@@ -10,14 +10,14 @@ from tests.conftest import register_user
 async def test_full_game_flow(client: AsyncClient):
     """
     End-to-end scenario:
-    1. Register KP and PL users
-    2. Create a game (KP)
+    1. Register DM and PL users
+    2. Create a game (DM)
     3. PL joins game
     4. Create regions
     5. Create patient + ghost for PL
     6. Start game
     7. Start play session
-    8. Submit skill_check event
+    8. Define event + submit event_check
     9. Submit attack event
     10. Query timeline
     11. End session + end game
@@ -145,25 +145,31 @@ async def test_full_game_flow(client: AsyncClient):
     assert session_start_resp.json()["success"] is True
     session_id = session_start_resp.json()["data"]["session_id"]
 
-    # 8. Skill check
+    # 8. Define event + event check
+    # DM defines an event for the session
+    define_resp = await client.post(f"/api/bot/sessions/{session_id}/events/define", json={
+        "game_id": game_id,
+        "name": "信号分析",
+        "expression": "2d6+3",
+    }, headers=kp_h)
+    assert define_resp.status_code == 200
+
     check_resp = await client.post("/api/bot/events", json={
         "game_id": game_id,
         "session_id": session_id,
         "user_id": pl["user_id"],
         "payload": {
-            "event_type": "skill_check",
+            "event_type": "event_check",
+            "event_name": "信号分析",
             "color": "C",
-            "difficulty": 3,
-            "context": "尝试分析扇区的数据流，寻找异常信号",
         },
     }, headers=pl_h)
     assert check_resp.status_code == 200
     check_data = check_resp.json()
     assert check_data["success"] is True
-    assert check_data["event_type"] == "skill_check"
-    assert "roll_total" in check_data["data"]
+    assert check_data["event_type"] == "event_check"
+    assert "player_total" in check_data["data"]
     assert "check_success" in check_data["data"]
-    assert len(check_data["rolls"]) == 1
 
     # 9. Attack
     atk_resp = await client.post("/api/bot/events", json={
@@ -189,10 +195,10 @@ async def test_full_game_flow(client: AsyncClient):
     )
     assert tl_resp.status_code == 200
     events = tl_resp.json()["events"]
-    assert len(events) >= 3  # session_start + skill_check + attack
+    assert len(events) >= 3  # session_start + event_check + attack
     event_types = [e["event_type"] for e in events]
     assert "session_start" in event_types
-    assert "skill_check" in event_types
+    assert "event_check" in event_types
     assert "attack" in event_types
 
     # 11. End session and game

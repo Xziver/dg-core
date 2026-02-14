@@ -6,22 +6,29 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain import character, game as game_mod, region as region_mod
+from app.domain import communication, inventory
 from app.domain import session as session_mod, timeline
-from app.domain.rules import combat, narration, skill
+from app.domain.rules import combat, event_check, narration
 from app.models.db_models import GamePlayer, Ghost, Patient, Session
 from app.models.event import (
     ApplyFragmentPayload,
     AttackPayload,
+    CommAcceptPayload,
+    CommCancelPayload,
+    CommRejectPayload,
+    CommRequestPayload,
     DefendPayload,
+    EventCheckPayload,
     EventType,
     GameEvent,
     HPChangePayload,
+    HardRerollPayload,
+    ItemUsePayload,
     LocationTransitionPayload,
     PlayerJoinPayload,
     RegionTransitionPayload,
+    RerollPayload,
     SessionStartPayload,
-    SkillCheckPayload,
-    UsePrintAbilityPayload,
 )
 from app.models.result import EngineResult, StateChange
 
@@ -46,15 +53,30 @@ async def dispatch(db: AsyncSession, event: GameEvent) -> EngineResult:
             return await _handle_session_start(db, event)
         elif et == EventType.SESSION_END:
             return await _handle_session_end(db, event)
-        # Actions
-        elif et == EventType.SKILL_CHECK:
-            return await _handle_skill_check(db, event)
+        # Event check system
+        elif et == EventType.EVENT_CHECK:
+            return await _handle_event_check(db, event)
+        elif et == EventType.REROLL:
+            return await _handle_reroll(db, event, hard=False)
+        elif et == EventType.HARD_REROLL:
+            return await _handle_reroll(db, event, hard=True)
+        # Combat
         elif et == EventType.ATTACK:
             return await _handle_attack(db, event)
         elif et == EventType.DEFEND:
             return await _handle_defend(db, event)
-        elif et == EventType.USE_PRINT_ABILITY:
-            return await _handle_use_print_ability(db, event)
+        # Communication
+        elif et == EventType.COMM_REQUEST:
+            return await _handle_comm_request(db, event)
+        elif et == EventType.COMM_ACCEPT:
+            return await _handle_comm_accept(db, event)
+        elif et == EventType.COMM_REJECT:
+            return await _handle_comm_reject(db, event)
+        elif et == EventType.COMM_CANCEL:
+            return await _handle_comm_cancel(db, event)
+        # Items
+        elif et == EventType.ITEM_USE:
+            return await _handle_item_use(db, event)
         # State changes
         elif et == EventType.APPLY_FRAGMENT:
             return await _handle_apply_fragment(db, event)
@@ -124,7 +146,11 @@ async def _handle_player_leave(db: AsyncSession, event: GameEvent) -> EngineResu
 async def _handle_session_start(db: AsyncSession, event: GameEvent) -> EngineResult:
     payload: SessionStartPayload = event.payload  # type: ignore[assignment]
     s = await session_mod.start_session(
-        db, game_id=event.game_id, started_by=event.user_id, region_id=payload.region_id
+        db,
+        game_id=event.game_id,
+        started_by=event.user_id,
+        region_id=payload.region_id,
+        location_id=payload.location_id,
     )
     await timeline.append_event(
         db, session_id=s.id, game_id=event.game_id,
@@ -133,7 +159,12 @@ async def _handle_session_start(db: AsyncSession, event: GameEvent) -> EngineRes
     return EngineResult(
         success=True,
         event_type="session_start",
-        data={"session_id": s.id, "game_id": event.game_id, "status": s.status},
+        data={
+            "session_id": s.id,
+            "game_id": event.game_id,
+            "status": s.status,
+            "location_id": s.location_id,
+        },
     )
 
 
@@ -151,42 +182,70 @@ async def _handle_session_end(db: AsyncSession, event: GameEvent) -> EngineResul
     )
 
 
-# --- Action events ---
+# --- Event check events ---
 
-async def _handle_skill_check(db: AsyncSession, event: GameEvent) -> EngineResult:
+async def _handle_event_check(db: AsyncSession, event: GameEvent) -> EngineResult:
     sid = _require_session(event)
-    payload: SkillCheckPayload = event.payload  # type: ignore[assignment]
+    payload: EventCheckPayload = event.payload  # type: ignore[assignment]
 
     patient = await _resolve_patient_for_event(db, event)
     if patient is None:
         return EngineResult(
-            success=False, event_type="skill_check",
+            success=False, event_type="event_check",
             error="No character in this session's region",
         )
 
     ghost = await _find_player_ghost(db, patient_id=patient.id)
     if ghost is None:
         return EngineResult(
-            success=False, event_type="skill_check", error="Player has no ghost in this game"
+            success=False, event_type="event_check",
+            error="Player has no ghost in this game",
         )
 
-    result = await skill.handle_skill_check(
+    return await event_check.handle_event_check(
         db,
         game_id=event.game_id,
         session_id=sid,
         user_id=event.user_id,
-        ghost_id=ghost.id,
+        ghost=ghost,
+        patient=patient,
+        event_name=payload.event_name,
         color=payload.color,
-        difficulty=payload.difficulty,
-        context=payload.context,
     )
 
-    result = await narration.enrich_result_with_narration(
-        db, event.game_id, result,
-        character_name=ghost.name,
-        context=payload.context,
+
+async def _handle_reroll(
+    db: AsyncSession, event: GameEvent, hard: bool = False
+) -> EngineResult:
+    sid = _require_session(event)
+    payload: RerollPayload | HardRerollPayload = event.payload  # type: ignore[assignment]
+
+    patient = await _resolve_patient_for_event(db, event)
+    event_type = "hard_reroll" if hard else "reroll"
+    if patient is None:
+        return EngineResult(
+            success=False, event_type=event_type,
+            error="No character in this session's region",
+        )
+
+    ghost = await _find_player_ghost(db, patient_id=patient.id)
+    if ghost is None:
+        return EngineResult(
+            success=False, event_type=event_type,
+            error="Player has no ghost in this game",
+        )
+
+    return await event_check.handle_reroll(
+        db,
+        game_id=event.game_id,
+        session_id=sid,
+        user_id=event.user_id,
+        ghost=ghost,
+        patient=patient,
+        event_name=payload.event_name,
+        ability_id=payload.ability_id,
+        hard=hard,
     )
-    return result
 
 
 # --- Combat events ---
@@ -230,38 +289,143 @@ async def _handle_defend(db: AsyncSession, event: GameEvent) -> EngineResult:
     )
 
 
-async def _handle_use_print_ability(db: AsyncSession, event: GameEvent) -> EngineResult:
+# --- Communication events ---
+
+async def _handle_comm_request(db: AsyncSession, event: GameEvent) -> EngineResult:
     sid = _require_session(event)
-    payload: UsePrintAbilityPayload = event.payload  # type: ignore[assignment]
-    ability = await character.get_print_ability(db, payload.ability_id)
-    if ability is None:
+    payload: CommRequestPayload = event.payload  # type: ignore[assignment]
+
+    patient = await _resolve_patient_for_event(db, event)
+    if patient is None:
         return EngineResult(
-            success=False, event_type="use_print_ability", error="Ability not found"
+            success=False, event_type="comm_request",
+            error="No active character found",
         )
-    consumed = await character.use_print_ability(db, ability)
-    if not consumed:
-        return EngineResult(
-            success=False, event_type="use_print_ability", error="No uses remaining"
-        )
+
+    comm = await communication.request_communication(
+        db,
+        game_id=event.game_id,
+        initiator_patient_id=patient.id,
+        target_patient_id=payload.target_patient_id,
+    )
+
     await timeline.append_event(
         db, session_id=sid, game_id=event.game_id,
-        event_type="use_print_ability",
-        actor_id=event.user_id,
-        data={"ghost_id": payload.ghost_id, "ability_id": payload.ability_id},
+        event_type="comm_request", actor_id=event.user_id,
+        data={
+            "request_id": comm.id,
+            "target_patient_id": payload.target_patient_id,
+        },
     )
+
     return EngineResult(
         success=True,
-        event_type="use_print_ability",
-        data={"ability_id": payload.ability_id, "uses_remaining": ability.ability_count},
-        state_changes=[
-            StateChange(
-                entity_type="print_ability",
-                entity_id=payload.ability_id,
-                field="ability_count",
-                new_value=str(ability.ability_count),
-            )
-        ],
+        event_type="comm_request",
+        data={
+            "request_id": comm.id,
+            "initiator_patient_id": patient.id,
+            "target_patient_id": payload.target_patient_id,
+            "status": comm.status,
+        },
     )
+
+
+async def _handle_comm_accept(db: AsyncSession, event: GameEvent) -> EngineResult:
+    sid = _require_session(event)
+    payload: CommAcceptPayload = event.payload  # type: ignore[assignment]
+
+    result_data = await communication.accept_communication(
+        db, request_id=payload.request_id, ability_id=payload.ability_id
+    )
+
+    await timeline.append_event(
+        db, session_id=sid, game_id=event.game_id,
+        event_type="comm_accept", actor_id=event.user_id,
+        data={"request_id": payload.request_id},
+    )
+
+    return EngineResult(
+        success=True,
+        event_type="comm_accept",
+        data=result_data,
+    )
+
+
+async def _handle_comm_reject(db: AsyncSession, event: GameEvent) -> EngineResult:
+    sid = _require_session(event)
+    payload: CommRejectPayload = event.payload  # type: ignore[assignment]
+
+    comm = await communication.reject_communication(db, payload.request_id)
+
+    await timeline.append_event(
+        db, session_id=sid, game_id=event.game_id,
+        event_type="comm_reject", actor_id=event.user_id,
+        data={"request_id": payload.request_id},
+    )
+
+    return EngineResult(
+        success=True,
+        event_type="comm_reject",
+        data={"request_id": comm.id, "status": comm.status},
+    )
+
+
+async def _handle_comm_cancel(db: AsyncSession, event: GameEvent) -> EngineResult:
+    sid = _require_session(event)
+    payload: CommCancelPayload = event.payload  # type: ignore[assignment]
+
+    comm = await communication.cancel_communication(db, payload.request_id)
+
+    await timeline.append_event(
+        db, session_id=sid, game_id=event.game_id,
+        event_type="comm_cancel", actor_id=event.user_id,
+        data={"request_id": payload.request_id},
+    )
+
+    return EngineResult(
+        success=True,
+        event_type="comm_cancel",
+        data={"request_id": comm.id, "status": comm.status},
+    )
+
+
+# --- Item events ---
+
+async def _handle_item_use(db: AsyncSession, event: GameEvent) -> EngineResult:
+    sid = _require_session(event)
+    payload: ItemUsePayload = event.payload  # type: ignore[assignment]
+
+    patient = await _resolve_patient_for_event(db, event)
+    if patient is None:
+        return EngineResult(
+            success=False, event_type="item_use",
+            error="No active character found",
+        )
+
+    ghost = await _find_player_ghost(db, patient_id=patient.id)
+    if ghost is None:
+        return EngineResult(
+            success=False, event_type="item_use",
+            error="Player has no ghost in this game",
+        )
+
+    result = await inventory.use_item(
+        db,
+        game_id=event.game_id,
+        patient_id=patient.id,
+        item_def_id=payload.item_def_id,
+        ghost=ghost,
+    )
+
+    if result.success:
+        await timeline.append_event(
+            db, session_id=sid, game_id=event.game_id,
+            event_type="item_use", actor_id=event.user_id,
+            data={"item_def_id": payload.item_def_id},
+            result_data=result.data,
+        )
+
+    return result
 
 
 # --- State events ---

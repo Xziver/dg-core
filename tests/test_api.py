@@ -624,7 +624,7 @@ async def test_hybrid_resolution_by_session_region(db_session):
     from app.domain import character, region as region_mod, session as session_mod
     from app.domain.dispatcher import _resolve_patient_for_event
     from app.models.db_models import Game, GamePlayer, User
-    from app.models.event import GameEvent, SkillCheckPayload
+    from app.models.event import GameEvent, EventCheckPayload
 
     db = db_session
 
@@ -663,7 +663,7 @@ async def test_hybrid_resolution_by_session_region(db_session):
         game_id=game.id,
         user_id=user.id,
         session_id=session.id,
-        payload=SkillCheckPayload(event_type="skill_check", color="M", difficulty=3),
+        payload=EventCheckPayload(event_type="event_check", event_name="test", color="M"),
     )
     resolved = await _resolve_patient_for_event(db, event)
     assert resolved is not None
@@ -673,7 +673,7 @@ async def test_hybrid_resolution_by_session_region(db_session):
     event_no_session = GameEvent(
         game_id=game.id,
         user_id=user.id,
-        payload=SkillCheckPayload(event_type="skill_check", color="C", difficulty=3),
+        payload=EventCheckPayload(event_type="event_check", event_name="test", color="C"),
     )
     resolved_fallback = await _resolve_patient_for_event(db, event_no_session)
     assert resolved_fallback is not None
@@ -686,7 +686,7 @@ async def test_session_region_rejects_wrong_region(db_session):
     from app.domain import character, region as region_mod, session as session_mod
     from app.domain.dispatcher import _resolve_patient_for_event
     from app.models.db_models import Game, GamePlayer, User
-    from app.models.event import GameEvent, SkillCheckPayload
+    from app.models.event import GameEvent, EventCheckPayload
 
     db = db_session
 
@@ -717,7 +717,7 @@ async def test_session_region_rejects_wrong_region(db_session):
         game_id=game.id,
         user_id=user.id,
         session_id=session.id,
-        payload=SkillCheckPayload(event_type="skill_check", color="C", difficulty=3),
+        payload=EventCheckPayload(event_type="event_check", event_name="test", color="C"),
     )
     resolved = await _resolve_patient_for_event(db, event)
     assert resolved is None  # No patient in region B

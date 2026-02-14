@@ -9,16 +9,23 @@ from sqladmin import Admin
 
 from app.admin.auth import AdminAuth
 from app.admin.views import (
+    BuffAdmin,
     ColorFragmentAdmin,
+    CommunicationRequestAdmin,
+    EventAbilityUsageAdmin,
+    EventDefinitionAdmin,
     GameAdmin,
     GamePlayerAdmin,
     GhostAdmin,
+    ItemDefinitionAdmin,
     LocationAdmin,
     PatientAdmin,
     PlatformBindingAdmin,
+    PlayerItemAdmin,
     PrintAbilityAdmin,
     RegionAdmin,
     SessionAdmin,
+    SessionPlayerAdmin,
     TimelineEventAdmin,
     UserAdmin,
 )
@@ -54,6 +61,15 @@ def setup_admin(app: FastAPI) -> Admin:
     admin.add_view(SessionAdmin)
     admin.add_view(TimelineEventAdmin)
     admin.add_view(ColorFragmentAdmin)
+
+    # New feature model views
+    admin.add_view(SessionPlayerAdmin)
+    admin.add_view(BuffAdmin)
+    admin.add_view(EventDefinitionAdmin)
+    admin.add_view(EventAbilityUsageAdmin)
+    admin.add_view(CommunicationRequestAdmin)
+    admin.add_view(ItemDefinitionAdmin)
+    admin.add_view(PlayerItemAdmin)
 
     # Custom views
     from app.admin.custom.dashboard import DashboardView

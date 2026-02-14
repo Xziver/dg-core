@@ -16,6 +16,21 @@ class DiceRollResult(BaseModel):
     reroll_results: list[int] | None = None
 
 
+class DiceExpressionRollResult(BaseModel):
+    """Result of evaluating a dice expression (richer than DiceRollResult)."""
+
+    expression: str
+    dice_count: int
+    dice_sides: int
+    individual_rolls: list[int]
+    kept_rolls: list[int] | None = None
+    subtotal: int
+    modifier: int
+    total: int
+    is_cmyk: bool = False
+    cmyk_color: str | None = None
+
+
 class StateChange(BaseModel):
     entity_type: str  # "ghost", "patient", "game", "game_player", "print_ability"
     entity_id: str

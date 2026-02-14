@@ -250,6 +250,40 @@ async def get_me(
     }
 
 
+class UnbindPlatformRequest(BaseModel):
+    platform: str
+    platform_uid: str
+
+
+@router.post("/unbind-platform")
+async def unbind_platform(
+    req: UnbindPlatformRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Remove a platform binding from the authenticated user."""
+    result = await db.execute(
+        select(PlatformBinding).where(
+            PlatformBinding.user_id == user.id,
+            PlatformBinding.platform == req.platform,
+            PlatformBinding.platform_uid == req.platform_uid,
+        )
+    )
+    binding = result.scalar_one_or_none()
+    if binding is None:
+        raise HTTPException(status_code=404, detail="Platform binding not found")
+
+    await db.delete(binding)
+    await db.flush()
+
+    return {
+        "user_id": user.id,
+        "platform": req.platform,
+        "platform_uid": req.platform_uid,
+        "status": "unbound",
+    }
+
+
 @router.post("/regenerate-api-key")
 async def regenerate_api_key(
     user: Annotated[User, Depends(get_current_user)],

@@ -114,7 +114,7 @@ class GamePlayer(Base):
         String(32), ForeignKey("users.id"), primary_key=True
     )
     role: Mapped[str] = mapped_column(
-        Enum("KP", "PL", name="player_role"), nullable=False
+        Enum("DM", "PL", name="player_role"), nullable=False
     )
     active_patient_id: Mapped[str | None] = mapped_column(
         String(32), ForeignKey("patients.id"), nullable=True
@@ -238,6 +238,8 @@ class Ghost(Base):
     cmyk_json: Mapped[str] = mapped_column(Text, nullable=False)  # {"C":1,"M":0,"Y":0,"K":0}
     hp: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
     hp_max: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    mp: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    mp_max: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
 
     # --- Origin patient data snapshot (immutable after creation) ---
     origin_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -265,6 +267,7 @@ class Ghost(Base):
     game: Mapped[Game] = relationship(back_populates="ghosts")
     print_abilities: Mapped[list[PrintAbility]] = relationship(back_populates="ghost")
     color_fragments: Mapped[list[ColorFragment]] = relationship(back_populates="holder_ghost")
+    buffs: Mapped[list[Buff]] = relationship(back_populates="ghost")
 
     def __str__(self) -> str:
         return self.name
@@ -300,18 +303,23 @@ class Session(Base):
     region_id: Mapped[str | None] = mapped_column(
         String(32), ForeignKey("regions.id"), nullable=True
     )
+    location_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("locations.id"), nullable=True
+    )
     started_by: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"))
     status: Mapped[str] = mapped_column(
-        Enum("active", "ended", name="session_status"),
+        Enum("active", "paused", "ended", name="session_status"),
         default="active",
     )
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     game: Mapped[Game] = relationship(back_populates="sessions")
-    region: Mapped[Region | None] = relationship()
+    region: Mapped[Region | None] = relationship(foreign_keys=[region_id])
+    location: Mapped[Location | None] = relationship(foreign_keys=[location_id])
     started_by_user: Mapped[User] = relationship(foreign_keys=[started_by])
     timeline_events: Mapped[list[TimelineEvent]] = relationship(back_populates="session")
+    session_players: Mapped[list[SessionPlayer]] = relationship(back_populates="session")
 
     def __str__(self) -> str:
         return f"Session {self.id[:8]} ({self.status})"
@@ -366,4 +374,209 @@ class ColorFragment(Base):
 
     __table_args__ = (
         Index("ix_fragment_game", "game_id"),
+    )
+
+
+# --- New models for refactored game features ---
+
+
+class SessionPlayer(Base):
+    """Tracks which patients are participating in a session."""
+
+    __tablename__ = "session_players"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    session_id: Mapped[str] = mapped_column(String(32), ForeignKey("sessions.id"))
+    patient_id: Mapped[str] = mapped_column(String(32), ForeignKey("patients.id"))
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    session: Mapped[Session] = relationship(back_populates="session_players")
+    patient: Mapped[Patient] = relationship()
+
+    def __str__(self) -> str:
+        return f"SessionPlayer({self.patient_id[:8]} in {self.session_id[:8]})"
+
+    __table_args__ = (
+        Index("ix_session_player_session", "session_id"),
+        Index("ix_session_player_patient", "patient_id"),
+        Index("ix_session_player_unique", "session_id", "patient_id", unique=True),
+    )
+
+
+class Buff(Base):
+    """Active buff/debuff on a ghost character."""
+
+    __tablename__ = "buffs"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    ghost_id: Mapped[str] = mapped_column(String(32), ForeignKey("ghosts.id"))
+    game_id: Mapped[str] = mapped_column(String(32), ForeignKey("games.id"))
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    expression: Mapped[str] = mapped_column(String(128), nullable=False)
+    buff_type: Mapped[str] = mapped_column(
+        Enum("numeric", "dice", "attribute", "text", name="buff_type"),
+        nullable=False,
+    )
+    remaining_rounds: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_by: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    ghost: Mapped[Ghost] = relationship(back_populates="buffs")
+    game: Mapped[Game] = relationship()
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.expression})"
+
+    __table_args__ = (
+        Index("ix_buff_ghost", "ghost_id"),
+        Index("ix_buff_game", "game_id"),
+    )
+
+
+class EventDefinition(Base):
+    """A DM-defined event check target, scoped to a session."""
+
+    __tablename__ = "event_definitions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    session_id: Mapped[str] = mapped_column(String(32), ForeignKey("sessions.id"))
+    game_id: Mapped[str] = mapped_column(String(32), ForeignKey("games.id"))
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    expression: Mapped[str] = mapped_column(String(128), nullable=False)
+    color_restriction: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    target_roll_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_roll_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    session: Mapped[Session] = relationship()
+    game: Mapped[Game] = relationship()
+
+    def __str__(self) -> str:
+        return f"Event: {self.name} ({self.expression})"
+
+    __table_args__ = (
+        Index("ix_event_def_session", "session_id"),
+        Index("ix_event_def_name", "session_id", "name"),
+    )
+
+
+class EventAbilityUsage(Base):
+    """Tracks which abilities have been used in a specific event check."""
+
+    __tablename__ = "event_ability_usages"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    event_def_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("event_definitions.id")
+    )
+    ghost_id: Mapped[str] = mapped_column(String(32), ForeignKey("ghosts.id"))
+    ability_id: Mapped[str] = mapped_column(String(32), ForeignKey("print_abilities.id"))
+    used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    def __str__(self) -> str:
+        return f"Usage({self.ability_id[:8]} in event {self.event_def_id[:8]})"
+
+    __table_args__ = (
+        Index("ix_event_usage_event_ghost", "event_def_id", "ghost_id"),
+        Index(
+            "ix_event_usage_unique",
+            "event_def_id",
+            "ghost_id",
+            "ability_id",
+            unique=True,
+        ),
+    )
+
+
+class CommunicationRequest(Base):
+    """A pending/completed communication request between two players."""
+
+    __tablename__ = "communication_requests"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    game_id: Mapped[str] = mapped_column(String(32), ForeignKey("games.id"))
+    initiator_patient_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("patients.id")
+    )
+    target_patient_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("patients.id")
+    )
+    status: Mapped[str] = mapped_column(
+        Enum("pending", "accepted", "rejected", "cancelled", name="comm_status"),
+        default="pending",
+    )
+    transferred_ability_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("print_abilities.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    game: Mapped[Game] = relationship()
+    initiator_patient: Mapped[Patient] = relationship(
+        foreign_keys=[initiator_patient_id]
+    )
+    target_patient: Mapped[Patient] = relationship(foreign_keys=[target_patient_id])
+
+    def __str__(self) -> str:
+        return f"Comm({self.status})"
+
+    __table_args__ = (
+        Index("ix_comm_game", "game_id"),
+        Index("ix_comm_initiator", "initiator_patient_id"),
+        Index("ix_comm_target", "target_patient_id"),
+        Index("ix_comm_status", "game_id", "status"),
+    )
+
+
+class ItemDefinition(Base):
+    """Game-scoped item template."""
+
+    __tablename__ = "item_definitions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    game_id: Mapped[str] = mapped_column(String(32), ForeignKey("games.id"))
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    item_type: Mapped[str] = mapped_column(String(32), nullable=False, default="generic")
+    effect_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stackable: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    game: Mapped[Game] = relationship()
+
+    def __str__(self) -> str:
+        return self.name
+
+    __table_args__ = (
+        Index("ix_item_def_game", "game_id"),
+        Index("ix_item_def_name", "game_id", "name"),
+    )
+
+
+class PlayerItem(Base):
+    """An item in a patient's inventory."""
+
+    __tablename__ = "player_items"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    patient_id: Mapped[str] = mapped_column(String(32), ForeignKey("patients.id"))
+    item_def_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("item_definitions.id")
+    )
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    acquired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    patient: Mapped[Patient] = relationship()
+    item_definition: Mapped[ItemDefinition] = relationship()
+
+    def __str__(self) -> str:
+        return f"Item x{self.count}"
+
+    __table_args__ = (
+        Index("ix_player_item_patient", "patient_id"),
+        Index("ix_player_item_unique", "patient_id", "item_def_id", unique=True),
     )

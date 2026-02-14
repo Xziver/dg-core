@@ -16,24 +16,27 @@ class EventType(str, Enum):
     PLAYER_JOIN = "player_join"
     PLAYER_LEAVE = "player_leave"
 
-    # Session lifecycle events (play sessions)
+    # Session lifecycle events
     SESSION_START = "session_start"
     SESSION_END = "session_end"
 
-    # Action events
-    SKILL_CHECK = "skill_check"
-    EXPLORE = "explore"
+    # Event check system (replaces skill_check)
+    EVENT_CHECK = "event_check"
+    REROLL = "reroll"
+    HARD_REROLL = "hard_reroll"
 
     # Combat events
     ATTACK = "attack"
     DEFEND = "defend"
-    USE_PRINT_ABILITY = "use_print_ability"
 
     # Communication events
-    INITIATE_COMM = "initiate_comm"
-    DOWNLOAD_ABILITY = "download_ability"
-    DEEP_SCAN = "deep_scan"
-    ATTEMPT_SEIZE = "attempt_seize"
+    COMM_REQUEST = "comm_request"
+    COMM_ACCEPT = "comm_accept"
+    COMM_REJECT = "comm_reject"
+    COMM_CANCEL = "comm_cancel"
+
+    # Item events
+    ITEM_USE = "item_use"
 
     # State events
     APPLY_FRAGMENT = "apply_fragment"
@@ -43,6 +46,7 @@ class EventType(str, Enum):
 
 
 # --- Payload models ---
+
 
 class GameStartPayload(BaseModel):
     event_type: Literal["game_start"] = "game_start"
@@ -54,7 +58,7 @@ class GameEndPayload(BaseModel):
 
 class PlayerJoinPayload(BaseModel):
     event_type: Literal["player_join"] = "player_join"
-    role: str = "PL"  # "KP" or "PL"
+    role: str = "PL"  # "DM" or "PL"
 
 
 class PlayerLeavePayload(BaseModel):
@@ -64,22 +68,35 @@ class PlayerLeavePayload(BaseModel):
 class SessionStartPayload(BaseModel):
     event_type: Literal["session_start"] = "session_start"
     region_id: str | None = None
+    location_id: str | None = None
 
 
 class SessionEndPayload(BaseModel):
     event_type: Literal["session_end"] = "session_end"
 
 
-class SkillCheckPayload(BaseModel):
-    event_type: Literal["skill_check"] = "skill_check"
-    color: str  # C/M/Y/K
-    difficulty: int
-    context: str = ""
+# --- Event check payloads ---
 
 
-class ExplorePayload(BaseModel):
-    event_type: Literal["explore"] = "explore"
-    target_area: str
+class EventCheckPayload(BaseModel):
+    event_type: Literal["event_check"] = "event_check"
+    event_name: str
+    color: str | None = None  # Override color; if omitted, uses soul_color
+
+
+class RerollPayload(BaseModel):
+    event_type: Literal["reroll"] = "reroll"
+    event_name: str
+    ability_id: str  # Same-color PrintAbility to consume
+
+
+class HardRerollPayload(BaseModel):
+    event_type: Literal["hard_reroll"] = "hard_reroll"
+    event_name: str
+    ability_id: str  # Any-color PrintAbility to consume (costs 1 MP)
+
+
+# --- Combat payloads ---
 
 
 class AttackPayload(BaseModel):
@@ -95,33 +112,39 @@ class DefendPayload(BaseModel):
     color_used: str  # C/M/Y/K
 
 
-class UsePrintAbilityPayload(BaseModel):
-    event_type: Literal["use_print_ability"] = "use_print_ability"
-    ghost_id: str
-    ability_id: str
-    target_roll_id: str | None = None
+# --- Communication payloads ---
 
 
-class InitiateCommPayload(BaseModel):
-    event_type: Literal["initiate_comm"] = "initiate_comm"
-    initiator_ghost_id: str
-    target_ghost_id: str
-
-
-class DownloadAbilityPayload(BaseModel):
-    event_type: Literal["download_ability"] = "download_ability"
-    from_ghost_id: str
-    ability_id: str
-
-
-class DeepScanPayload(BaseModel):
-    event_type: Literal["deep_scan"] = "deep_scan"
+class CommRequestPayload(BaseModel):
+    event_type: Literal["comm_request"] = "comm_request"
     target_patient_id: str
 
 
-class AttemptSeizePayload(BaseModel):
-    event_type: Literal["attempt_seize"] = "attempt_seize"
-    target_ghost_id: str
+class CommAcceptPayload(BaseModel):
+    event_type: Literal["comm_accept"] = "comm_accept"
+    request_id: str
+    ability_id: str | None = None  # Required if target has multiple abilities
+
+
+class CommRejectPayload(BaseModel):
+    event_type: Literal["comm_reject"] = "comm_reject"
+    request_id: str
+
+
+class CommCancelPayload(BaseModel):
+    event_type: Literal["comm_cancel"] = "comm_cancel"
+    request_id: str
+
+
+# --- Item payloads ---
+
+
+class ItemUsePayload(BaseModel):
+    event_type: Literal["item_use"] = "item_use"
+    item_def_id: str
+
+
+# --- State payloads ---
 
 
 class ApplyFragmentPayload(BaseModel):
@@ -156,15 +179,16 @@ EventPayload = Annotated[
         PlayerLeavePayload,
         SessionStartPayload,
         SessionEndPayload,
-        SkillCheckPayload,
-        ExplorePayload,
+        EventCheckPayload,
+        RerollPayload,
+        HardRerollPayload,
         AttackPayload,
         DefendPayload,
-        UsePrintAbilityPayload,
-        InitiateCommPayload,
-        DownloadAbilityPayload,
-        DeepScanPayload,
-        AttemptSeizePayload,
+        CommRequestPayload,
+        CommAcceptPayload,
+        CommRejectPayload,
+        CommCancelPayload,
+        ItemUsePayload,
         ApplyFragmentPayload,
         HPChangePayload,
         RegionTransitionPayload,

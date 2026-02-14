@@ -14,6 +14,15 @@ from app.admin.views.character import (
     ColorFragmentAdmin,
 )
 from app.admin.views.region import RegionAdmin, LocationAdmin
+from app.admin.views.features import (
+    BuffAdmin,
+    CommunicationRequestAdmin,
+    EventAbilityUsageAdmin,
+    EventDefinitionAdmin,
+    ItemDefinitionAdmin,
+    PlayerItemAdmin,
+    SessionPlayerAdmin,
+)
 
 __all__ = [
     "UserAdmin",
@@ -28,4 +37,11 @@ __all__ = [
     "ColorFragmentAdmin",
     "RegionAdmin",
     "LocationAdmin",
+    "BuffAdmin",
+    "CommunicationRequestAdmin",
+    "EventAbilityUsageAdmin",
+    "EventDefinitionAdmin",
+    "ItemDefinitionAdmin",
+    "PlayerItemAdmin",
+    "SessionPlayerAdmin",
 ]

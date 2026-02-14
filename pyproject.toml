@@ -1,6 +1,6 @@
 [project]
 name = "dg-core"
-version = "0.2.0"
+version = "0.3.0"
 description = "Digital Ghost World Engine - TRPG game engine service"
 requires-python = ">=3.12"
 dependencies = [

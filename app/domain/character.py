@@ -259,6 +259,77 @@ async def change_hp(db: AsyncSession, ghost: Ghost, delta: int) -> tuple[int, bo
     return ghost.hp, collapsed
 
 
+async def change_mp(db: AsyncSession, ghost: Ghost, delta: int) -> tuple[int, bool]:
+    """Change ghost MP. Returns (new_mp, depleted)."""
+    ghost.mp = max(0, min(ghost.mp + delta, ghost.mp_max))
+    depleted = ghost.mp <= 0
+    await db.flush()
+    return ghost.mp, depleted
+
+
+async def get_patients_in_game(
+    db: AsyncSession, game_id: str, user_id: str
+) -> list[Patient]:
+    """List all of a user's patients in a game."""
+    result = await db.execute(
+        select(Patient).where(
+            Patient.game_id == game_id,
+            Patient.user_id == user_id,
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def delete_patient(db: AsyncSession, patient_id: str) -> None:
+    """Delete a patient. Validates no ghost is currently attached."""
+    patient = await get_patient(db, patient_id)
+    if patient is None:
+        raise ValueError(f"Patient {patient_id} not found")
+
+    # Check no ghost currently paired with this patient
+    ghost_result = await db.execute(
+        select(Ghost).where(Ghost.current_patient_id == patient_id)
+    )
+    if ghost_result.scalar_one_or_none() is not None:
+        raise ValueError("Cannot delete patient: a ghost is currently paired with them")
+
+    # Clear active_patient_id references
+    gp_result = await db.execute(
+        select(GamePlayer).where(GamePlayer.active_patient_id == patient_id)
+    )
+    for gp in gp_result.scalars().all():
+        gp.active_patient_id = None
+
+    await db.delete(patient)
+    await db.flush()
+
+
+async def set_ghost_attribute(
+    db: AsyncSession, ghost: Ghost, attribute: str, value: int
+) -> None:
+    """Set a ghost attribute (hp, mp, hp_max, mp_max, or cmyk.X).
+
+    For CMYK: use attribute="cmyk.C", "cmyk.M", etc.
+    """
+    if attribute == "hp":
+        ghost.hp = max(0, value)
+    elif attribute == "mp":
+        ghost.mp = max(0, value)
+    elif attribute == "hp_max":
+        ghost.hp_max = max(1, value)
+    elif attribute == "mp_max":
+        ghost.mp_max = max(1, value)
+    elif attribute.startswith("cmyk."):
+        color = attribute[5:].upper()
+        if color not in ("C", "M", "Y", "K"):
+            raise ValueError(f"Invalid CMYK color: {color}")
+        await set_color_value(db, ghost, color, value)
+        return
+    else:
+        raise ValueError(f"Unknown attribute: {attribute}")
+    await db.flush()
+
+
 # --- Print Abilities ---
 
 async def add_print_ability(

@@ -2,7 +2,6 @@
 
 from unittest.mock import patch
 
-import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
