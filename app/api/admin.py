@@ -66,7 +66,7 @@ class CreatePatientRequest(BaseModel):
 
 
 class CreateGhostRequest(BaseModel):
-    patient_id: str
+    origin_patient_id: str
     creator_user_id: str
     game_id: str
     name: str
@@ -241,7 +241,7 @@ async def create_ghost(
 ) -> dict:
     ghost = await character.create_ghost(
         db,
-        patient_id=req.patient_id,
+        origin_patient_id=req.origin_patient_id,
         creator_user_id=req.creator_user_id,
         game_id=req.game_id,
         name=req.name,
@@ -267,6 +267,13 @@ async def create_ghost(
         "hp": ghost.hp,
         "hp_max": ghost.hp_max,
         "print_abilities": abilities,
+        "origin_snapshot": {
+            "origin_name": ghost.origin_name,
+            "origin_soul_color": ghost.origin_soul_color,
+            "origin_identity": ghost.origin_identity,
+            "origin_ideal_projection": ghost.origin_ideal_projection,
+            "archive_unlock_state": json.loads(ghost.archive_unlock_json),
+        },
     }
 
 
@@ -293,6 +300,20 @@ async def get_character(
                 {"id": a.id, "name": a.name, "color": a.color, "ability_count": a.ability_count}
                 for a in abilities
             ],
+            "current_patient_id": ghost.current_patient_id,
+            "origin_patient_id": ghost.origin_patient_id,
+            "origin_snapshot": {
+                "origin_name": ghost.origin_name,
+                "origin_identity": ghost.origin_identity,
+                "origin_soul_color": ghost.origin_soul_color,
+                "origin_ideal_projection": ghost.origin_ideal_projection,
+                "origin_archives": json.loads(ghost.origin_archives_json) if ghost.origin_archives_json else None,
+            },
+            "unlock_state": {
+                "archive_unlock": json.loads(ghost.archive_unlock_json),
+                "origin_name_unlocked": ghost.origin_name_unlocked,
+                "origin_identity_unlocked": ghost.origin_identity_unlocked,
+            },
         }
 
     patient = await character.get_patient(db, character_id)
@@ -308,6 +329,29 @@ async def get_character(
         }
 
     raise HTTPException(status_code=404, detail="Character not found")
+
+
+class AssignCompanionRequest(BaseModel):
+    patient_id: str
+
+
+@router.put("/characters/ghost/{ghost_id}/assign-companion")
+async def assign_ghost_companion(
+    ghost_id: str,
+    req: AssignCompanionRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Assign a ghost as companion to a patient (admin operation)."""
+    ghost = await character.get_ghost(db, ghost_id)
+    if ghost is None:
+        raise HTTPException(status_code=404, detail="Ghost not found")
+    ghost.current_patient_id = req.patient_id
+    await db.flush()
+    return {
+        "ghost_id": ghost.id,
+        "current_patient_id": ghost.current_patient_id,
+    }
 
 
 # --- RAG endpoint ---

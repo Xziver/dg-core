@@ -10,12 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pydantic import BaseModel
 
-from app.domain import game as game_mod, session as session_mod, timeline
+from app.domain import character, game as game_mod, session as session_mod, timeline
 from app.domain.dispatcher import dispatch
 from app.infra.auth import get_current_user
 from app.infra.db import get_db
 from app.infra.ws_manager import ws_manager
-from app.models.db_models import User
+from app.models.db_models import GamePlayer, User
 from app.models.event import GameEvent
 
 router = APIRouter(prefix="/api/bot", tags=["bot"])
@@ -140,3 +140,43 @@ async def switch_active_character(
         "user_id": gp.user_id,
         "active_patient_id": gp.active_patient_id,
     }
+
+
+class UnlockArchiveRequest(BaseModel):
+    fragment_id: str
+
+
+@router.post("/games/{game_id}/unlock-archive")
+async def unlock_archive(
+    game_id: str,
+    body: UnlockArchiveRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Redeem a color fragment to unlock the corresponding origin archive."""
+    from sqlalchemy import select
+
+    # Find the player's active ghost in this game
+    gp_result = await db.execute(
+        select(GamePlayer).where(
+            GamePlayer.game_id == game_id,
+            GamePlayer.user_id == current_user.id,
+        )
+    )
+    gp = gp_result.scalar_one_or_none()
+    if gp is None or gp.active_patient_id is None:
+        raise HTTPException(status_code=400, detail="No active character in this game")
+
+    from app.models.db_models import Ghost
+    ghost_result = await db.execute(
+        select(Ghost).where(Ghost.current_patient_id == gp.active_patient_id)
+    )
+    ghost = ghost_result.scalar_one_or_none()
+    if ghost is None:
+        raise HTTPException(status_code=400, detail="No ghost assigned to active character")
+
+    try:
+        result = await character.unlock_archive(db, body.fragment_id, ghost.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return result

@@ -76,7 +76,7 @@ async def test_full_game_flow(client: AsyncClient):
     assert swap["soul_color"] == "C"
 
     ghost_resp = await client.post("/api/admin/characters/ghost", json={
-        "patient_id": patient_id,
+        "origin_patient_id": patient_id,
         "creator_user_id": pl2["user_id"],
         "game_id": game_id,
         "name": "Echo",
@@ -95,6 +95,12 @@ async def test_full_game_flow(client: AsyncClient):
     ghost_id = ghost_resp.json()["ghost_id"]
     assert ghost_resp.json()["cmyk"]["C"] == 1
 
+    # Assign ghost as companion to the patient
+    assign_resp = await client.put(f"/api/admin/characters/ghost/{ghost_id}/assign-companion", json={
+        "patient_id": patient_id,
+    }, headers=kp_h)
+    assert assign_resp.status_code == 200
+
     # Also create a second patient+ghost as target
     p2_patient = await client.post("/api/admin/characters/patient", json={
         "user_id": pl2["user_id"], "game_id": game_id, "name": "敌方实体", "soul_color": "M",
@@ -102,13 +108,18 @@ async def test_full_game_flow(client: AsyncClient):
     target_patient_id = p2_patient.json()["patient_id"]
 
     target_ghost = await client.post("/api/admin/characters/ghost", json={
-        "patient_id": target_patient_id,
+        "origin_patient_id": target_patient_id,
         "creator_user_id": pl["user_id"],
         "game_id": game_id,
         "name": "Glitch",
         "soul_color": "M",
     }, headers=pl_h)
     target_ghost_id = target_ghost.json()["ghost_id"]
+
+    # Assign target ghost as companion to the target patient
+    await client.put(f"/api/admin/characters/ghost/{target_ghost_id}/assign-companion", json={
+        "patient_id": target_patient_id,
+    }, headers=kp_h)
 
     # 6. Start game
     start_game_resp = await client.post("/api/bot/events", json={

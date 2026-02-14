@@ -92,9 +92,9 @@ class BulkOpsView(BaseView):
             rows = result.scalars().all()
         return _csv_response(
             "ghosts.csv",
-            ["id", "patient_id", "creator_user_id", "game_id", "name", "cmyk_json", "hp", "hp_max"],
+            ["id", "current_patient_id", "origin_patient_id", "creator_user_id", "game_id", "name", "cmyk_json", "hp", "hp_max"],
             [
-                [r.id, r.patient_id, r.creator_user_id, r.game_id, r.name, r.cmyk_json, r.hp, r.hp_max]
+                [r.id, r.current_patient_id or "", r.origin_patient_id or "", r.creator_user_id, r.game_id, r.name, r.cmyk_json, r.hp, r.hp_max]
                 for r in rows
             ],
         )
@@ -176,7 +176,8 @@ def _create_ghost(row: dict) -> Ghost:
     # Validate JSON
     json.loads(cmyk)
     return Ghost(
-        patient_id=row["patient_id"],
+        current_patient_id=row.get("current_patient_id") or None,
+        origin_patient_id=row.get("origin_patient_id") or None,
         creator_user_id=row["creator_user_id"],
         game_id=row["game_id"],
         name=row["name"],

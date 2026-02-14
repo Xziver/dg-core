@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db_models import ColorFragment, GamePlayer, Ghost, Patient, PrintAbility
 
+_DEFAULT_ARCHIVE_UNLOCK = '{"C":false,"M":false,"Y":false,"K":false}'
+
 
 # --- Patient ---
 
@@ -81,7 +83,7 @@ def generate_swap_file(patient: Patient) -> dict:
 
 async def create_ghost(
     db: AsyncSession,
-    patient_id: str,
+    origin_patient_id: str,
     creator_user_id: str,
     game_id: str,
     name: str,
@@ -90,12 +92,22 @@ async def create_ghost(
     personality: str | None = None,
     initial_hp: int = 10,
 ) -> Ghost:
+    # Fetch origin patient for snapshot
+    origin = await get_patient(db, origin_patient_id)
+    if origin is None:
+        raise ValueError(f"Origin patient {origin_patient_id} not found")
+
     # Initialize CMYK: soul_color starts at 1, others at 0
     cmyk = {"C": 0, "M": 0, "Y": 0, "K": 0}
     cmyk[soul_color.upper()] = 1
 
+    # Initialize archive unlock — soul_color archive unlocked at creation (SWAP reveals it)
+    archive_unlock = {"C": False, "M": False, "Y": False, "K": False}
+    archive_unlock[soul_color.upper()] = True
+
     ghost = Ghost(
-        patient_id=patient_id,
+        current_patient_id=None,  # companion assigned later via admin
+        origin_patient_id=origin_patient_id,
         creator_user_id=creator_user_id,
         game_id=game_id,
         name=name,
@@ -104,6 +116,15 @@ async def create_ghost(
         cmyk_json=json.dumps(cmyk),
         hp=initial_hp,
         hp_max=initial_hp,
+        # Origin data snapshot
+        origin_name=origin.name,
+        origin_identity=origin.identity,
+        origin_soul_color=origin.soul_color,
+        origin_ideal_projection=origin.ideal_projection,
+        origin_archives_json=origin.personality_archives_json,
+        archive_unlock_json=json.dumps(archive_unlock),
+        origin_name_unlocked=False,
+        origin_identity_unlocked=False,
     )
     db.add(ghost)
     await db.flush()
@@ -138,8 +159,11 @@ async def set_color_value(db: AsyncSession, ghost: Ghost, color: str, value: int
 
 async def apply_color_fragment(
     db: AsyncSession, ghost: Ghost, color: str, value: int = 1
-) -> dict[str, int]:
-    """Apply a color fragment: increment the CMYK value and record the fragment."""
+) -> dict:
+    """Apply a color fragment: increment the CMYK value and record the fragment.
+
+    Returns dict with updated cmyk and fragment_id (usable as archive unlock key).
+    """
     cmyk = get_cmyk(ghost)
     old_val = cmyk.get(color.upper(), 0)
     cmyk[color.upper()] = old_val + value
@@ -153,7 +177,78 @@ async def apply_color_fragment(
     )
     db.add(fragment)
     await db.flush()
-    return cmyk
+    return {"cmyk": cmyk, "fragment_id": fragment.id}
+
+
+async def unlock_archive(db: AsyncSession, fragment_id: str, ghost_id: str) -> dict:
+    """Redeem a color fragment to unlock the corresponding origin archive.
+
+    Returns dict with the unlocked color and archive content.
+    """
+    from datetime import datetime, timezone
+
+    result = await db.execute(
+        select(ColorFragment).where(ColorFragment.id == fragment_id)
+    )
+    fragment = result.scalar_one_or_none()
+    if fragment is None:
+        raise ValueError(f"Fragment {fragment_id} not found")
+    if fragment.holder_ghost_id != ghost_id:
+        raise ValueError("Fragment does not belong to this ghost")
+    if fragment.redeemed:
+        raise ValueError("Fragment has already been redeemed")
+
+    ghost = await get_ghost(db, ghost_id)
+    if ghost is None:
+        raise ValueError(f"Ghost {ghost_id} not found")
+
+    color = fragment.color.upper()
+    unlock_state = json.loads(ghost.archive_unlock_json)
+    if unlock_state.get(color, False):
+        raise ValueError(f"Archive for color {color} is already unlocked")
+
+    # Mark fragment as redeemed
+    fragment.redeemed = True
+    fragment.redeemed_at = datetime.now(timezone.utc)
+
+    # Unlock the archive
+    unlock_state[color] = True
+    ghost.archive_unlock_json = json.dumps(unlock_state)
+    await db.flush()
+
+    # Return the unlocked archive content
+    archives = json.loads(ghost.origin_archives_json) if ghost.origin_archives_json else {}
+    return {
+        "color": color,
+        "archive_content": archives.get(color),
+        "archive_unlock_state": unlock_state,
+    }
+
+
+def get_unlocked_origin_data(ghost: Ghost) -> dict:
+    """Return origin patient data filtered by unlock state.
+
+    soul_color and ideal_projection are always visible (shared via SWAP).
+    Archives are gated by archive_unlock_json.
+    Name/identity are gated by explicit unlock flags.
+    """
+    result: dict = {
+        "origin_soul_color": ghost.origin_soul_color,
+        "origin_ideal_projection": ghost.origin_ideal_projection,
+    }
+    if ghost.origin_name_unlocked:
+        result["origin_name"] = ghost.origin_name
+    if ghost.origin_identity_unlocked:
+        result["origin_identity"] = ghost.origin_identity
+
+    unlock_state = json.loads(ghost.archive_unlock_json) if ghost.archive_unlock_json else {}
+    archives = json.loads(ghost.origin_archives_json) if ghost.origin_archives_json else {}
+    result["origin_archives"] = {
+        color: archives.get(color)
+        for color, unlocked in unlock_state.items()
+        if unlocked and archives.get(color) is not None
+    }
+    return result
 
 
 async def change_hp(db: AsyncSession, ghost: Ghost, delta: int) -> tuple[int, bool]:

@@ -205,7 +205,12 @@ class Patient(Base):
 
     user: Mapped[User] = relationship(back_populates="patients")
     game: Mapped[Game] = relationship(back_populates="patients")
-    ghost: Mapped[Ghost | None] = relationship(back_populates="patient", uselist=False)
+    ghost: Mapped[Ghost | None] = relationship(
+        foreign_keys="[Ghost.current_patient_id]", back_populates="current_patient", uselist=False
+    )
+    origin_ghost: Mapped[Ghost | None] = relationship(
+        foreign_keys="[Ghost.origin_patient_id]", back_populates="origin_patient", uselist=False
+    )
 
     def __str__(self) -> str:
         return f"{self.name} ({self.soul_color})"
@@ -219,8 +224,11 @@ class Ghost(Base):
     __tablename__ = "ghosts"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
-    patient_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("patients.id"), unique=True
+    current_patient_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("patients.id"), unique=True, nullable=True
+    )
+    origin_patient_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("patients.id"), unique=True, nullable=True
     )
     creator_user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"))
     game_id: Mapped[str] = mapped_column(String(32), ForeignKey("games.id"))
@@ -230,9 +238,29 @@ class Ghost(Base):
     cmyk_json: Mapped[str] = mapped_column(Text, nullable=False)  # {"C":1,"M":0,"Y":0,"K":0}
     hp: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
     hp_max: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+
+    # --- Origin patient data snapshot (immutable after creation) ---
+    origin_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    origin_identity: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    origin_soul_color: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    origin_ideal_projection: Mapped[str | None] = mapped_column(Text, nullable=True)
+    origin_archives_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # --- Unlock state ---
+    archive_unlock_json: Mapped[str] = mapped_column(
+        Text, nullable=False, default='{"C":false,"M":false,"Y":false,"K":false}'
+    )
+    origin_name_unlocked: Mapped[bool] = mapped_column(Boolean, default=False)
+    origin_identity_unlocked: Mapped[bool] = mapped_column(Boolean, default=False)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
-    patient: Mapped[Patient] = relationship(back_populates="ghost")
+    current_patient: Mapped[Patient | None] = relationship(
+        foreign_keys=[current_patient_id], back_populates="ghost"
+    )
+    origin_patient: Mapped[Patient | None] = relationship(
+        foreign_keys=[origin_patient_id], back_populates="origin_ghost"
+    )
     creator_user: Mapped[User] = relationship(foreign_keys=[creator_user_id])
     game: Mapped[Game] = relationship(back_populates="ghosts")
     print_abilities: Mapped[list[PrintAbility]] = relationship(back_populates="ghost")
@@ -327,6 +355,8 @@ class ColorFragment(Base):
     holder_ghost_id: Mapped[str] = mapped_column(String(32), ForeignKey("ghosts.id"))
     color: Mapped[str] = mapped_column(String(1), nullable=False)  # C/M/Y/K
     value: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    redeemed: Mapped[bool] = mapped_column(Boolean, default=False)
+    redeemed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     holder_ghost: Mapped[Ghost] = relationship(back_populates="color_fragments")
     game: Mapped[Game] = relationship()

@@ -47,6 +47,7 @@ class PatientAdmin(ModelView, model=Patient):
         Patient.user,
         Patient.game,
         Patient.ghost,
+        Patient.origin_ghost,
         Patient.created_at,
     ]
 
@@ -75,7 +76,8 @@ class GhostAdmin(ModelView, model=Ghost):
     column_list = [
         Ghost.id,
         Ghost.name,
-        "patient",
+        "current_patient",
+        "origin_patient",
         Ghost.cmyk_json,
         Ghost.hp,
         Ghost.hp_max,
@@ -91,7 +93,8 @@ class GhostAdmin(ModelView, model=Ghost):
     column_details_list = [
         Ghost.id,
         Ghost.name,
-        Ghost.patient,
+        Ghost.current_patient,
+        Ghost.origin_patient,
         Ghost.game,
         "creator_user",
         Ghost.cmyk_json,
@@ -99,13 +102,22 @@ class GhostAdmin(ModelView, model=Ghost):
         Ghost.hp_max,
         Ghost.appearance,
         Ghost.personality,
+        Ghost.origin_name,
+        Ghost.origin_identity,
+        Ghost.origin_soul_color,
+        Ghost.origin_ideal_projection,
+        Ghost.origin_archives_json,
+        Ghost.archive_unlock_json,
+        Ghost.origin_name_unlocked,
+        Ghost.origin_identity_unlocked,
         Ghost.print_abilities,
         Ghost.color_fragments,
         Ghost.created_at,
     ]
 
     form_columns = [
-        "patient",
+        "current_patient",
+        "origin_patient",
         "creator_user",
         "game",
         "name",
@@ -114,6 +126,14 @@ class GhostAdmin(ModelView, model=Ghost):
         "cmyk_json",
         "hp",
         "hp_max",
+        "origin_name",
+        "origin_identity",
+        "origin_soul_color",
+        "origin_ideal_projection",
+        "origin_archives_json",
+        "archive_unlock_json",
+        "origin_name_unlocked",
+        "origin_identity_unlocked",
     ]
 
     can_export = True
@@ -153,14 +173,16 @@ class ColorFragmentAdmin(ModelView, model=ColorFragment):
         ColorFragment.id,
         ColorFragment.color,
         ColorFragment.value,
+        ColorFragment.redeemed,
         "holder_ghost",
         "game",
     ]
-    column_sortable_list = [ColorFragment.color, ColorFragment.value]
+    column_sortable_list = [ColorFragment.color, ColorFragment.value, ColorFragment.redeemed]
 
     form_columns = [
         "game",
         "holder_ghost",
         "color",
         "value",
+        "redeemed",
     ]

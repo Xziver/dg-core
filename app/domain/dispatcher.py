@@ -265,7 +265,8 @@ async def _handle_apply_fragment(db: AsyncSession, event: GameEvent) -> EngineRe
         return EngineResult(
             success=False, event_type="apply_fragment", error="Ghost not found"
         )
-    new_cmyk = await character.apply_color_fragment(db, ghost, payload.color, payload.value)
+    fragment_result = await character.apply_color_fragment(db, ghost, payload.color, payload.value)
+    new_cmyk = fragment_result["cmyk"]
     await timeline.append_event(
         db, session_id=sid, game_id=event.game_id,
         event_type="apply_fragment",
@@ -275,7 +276,7 @@ async def _handle_apply_fragment(db: AsyncSession, event: GameEvent) -> EngineRe
     return EngineResult(
         success=True,
         event_type="apply_fragment",
-        data={"ghost_id": payload.ghost_id, "cmyk": new_cmyk},
+        data={"ghost_id": payload.ghost_id, "cmyk": new_cmyk, "fragment_id": fragment_result["fragment_id"]},
         state_changes=[
             StateChange(
                 entity_type="ghost",
@@ -397,6 +398,6 @@ async def _find_player_ghost(
         return None
 
     result = await db.execute(
-        select(Ghost).where(Ghost.patient_id == gp.active_patient_id)
+        select(Ghost).where(Ghost.current_patient_id == gp.active_patient_id)
     )
     return result.scalar_one_or_none()
