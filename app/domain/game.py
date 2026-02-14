@@ -111,8 +111,8 @@ async def switch_character(
     gp = result.scalar_one_or_none()
     if gp is None:
         raise ValueError(f"Player {user_id} not found in game {game_id}")
-    if gp.role != "PL":
-        raise ValueError("Only PL players can set an active character")
+    if gp.role not in ("PL", "DM"):
+        raise ValueError("Only game participants can set an active character")
 
     # Verify the patient belongs to this user and game
     patient_result = await db.execute(

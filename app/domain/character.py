@@ -50,7 +50,7 @@ async def create_patient(
         )
     )
     gp = gp_result.scalar_one_or_none()
-    if gp is not None and gp.role == "PL" and gp.active_patient_id is None:
+    if gp is not None and gp.active_patient_id is None:
         gp.active_patient_id = patient.id
         await db.flush()
 

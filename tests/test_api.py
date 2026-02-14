@@ -295,8 +295,8 @@ async def test_switch_character_allowed_during_active_session(client: AsyncClien
 
 
 @pytest.mark.asyncio
-async def test_switch_character_kp_rejected(client: AsyncClient):
-    """KP cannot set an active character."""
+async def test_switch_character_dm_allowed(client: AsyncClient):
+    """DM can also set an active character (DM may participate as player)."""
     kp, pl, game_id = await _setup_game_with_player(client)
 
     patient_id = await _create_patient_for(
@@ -308,8 +308,8 @@ async def test_switch_character_kp_rejected(client: AsyncClient):
         json={"patient_id": patient_id},
         headers=kp["headers"],
     )
-    assert resp.status_code == 400
-    assert "PL" in resp.json()["detail"]
+    assert resp.status_code == 200
+    assert resp.json()["active_patient_id"] == patient_id
 
 
 @pytest.mark.asyncio
