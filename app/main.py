@@ -1,5 +1,6 @@
 """dg-core — FastAPI application entry point."""
 
+import logging
 from contextlib import asynccontextmanager
 from importlib.metadata import version, PackageNotFoundError
 
@@ -8,6 +9,10 @@ from fastapi.openapi.utils import get_openapi
 
 from app.admin import setup_admin
 from app.api import admin, auth, bot, web
+from app.infra.db import async_session_factory
+from app.infra.init_admin import ensure_default_admin
+
+logger = logging.getLogger("dg-core")
 
 try:
     __version__ = version("dg-core")
@@ -18,6 +23,14 @@ except PackageNotFoundError:
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
     # Schema managed by Alembic — run `alembic upgrade head` before starting.
+    try:
+        await ensure_default_admin(async_session_factory)
+    except Exception:
+        logger.warning(
+            "Could not create default admin user. "
+            "Ensure Alembic migrations have been applied (`alembic upgrade head`).",
+            exc_info=True,
+        )
     yield
 
 
@@ -63,9 +76,12 @@ def custom_openapi() -> dict:  # type: ignore[no-untyped-def]
         },
     })
     
-    # For bot endpoints, add apiKey or bearerAuth to security if not already present
+    # Add security requirements to authenticated endpoints.
+    # Endpoints using get_current_user() parse headers manually, so FastAPI
+    # can't auto-detect them as secured — we annotate them here.
+    # Paths that are public (/health, /api/auth/*, /admin/*) are excluded.
     for path, path_item in openapi_schema.get("paths", {}).items():
-        if path.startswith("/api/bot"):
+        if path.startswith(("/api/bot", "/api/admin")):
             for method, operation in path_item.items():
                 if isinstance(operation, dict) and "security" not in operation:
                     operation["security"] = [

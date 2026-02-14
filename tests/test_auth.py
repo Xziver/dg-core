@@ -34,11 +34,12 @@ async def test_register_duplicate_platform(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_login_by_platform(client: AsyncClient):
-    await register_user(client, "PlatformUser", "qq", "login_001")
+    user = await register_user(client, "PlatformUser", "qq", "login_001")
+    # Platform login requires auth (simulates a trusted bot service calling)
     resp = await client.post("/api/auth/login/platform", json={
         "platform": "qq",
         "platform_uid": "login_001",
-    })
+    }, headers=user["headers"])
     assert resp.status_code == 200
     data = resp.json()
     assert "access_token" in data
@@ -59,10 +60,11 @@ async def test_login_by_api_key(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_login_invalid_platform(client: AsyncClient):
+    user = await register_user(client, "InvalidPlat", "test", "ip_001")
     resp = await client.post("/api/auth/login/platform", json={
         "platform": "qq",
         "platform_uid": "nonexistent",
-    })
+    }, headers=user["headers"])
     assert resp.status_code == 404
 
 
@@ -118,10 +120,10 @@ async def test_multi_platform_same_user(client: AsyncClient):
         "platform": "discord", "platform_uid": "multi_disc",
     }, headers=user["headers"])
 
-    # Login via discord should return the same user
+    # Login via discord should return the same user (auth as bot service)
     resp = await client.post("/api/auth/login/platform", json={
         "platform": "discord", "platform_uid": "multi_disc",
-    })
+    }, headers=user["headers"])
     assert resp.status_code == 200
     assert resp.json()["user_id"] == user["user_id"]
 

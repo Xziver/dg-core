@@ -131,7 +131,9 @@ async def authenticate_by_password(
 
 # --- FastAPI Dependencies ---
 
-_bearer_scheme = HTTPBearer(auto_error=False)
+# scheme_name must match the key used in custom_openapi() securitySchemes
+# to avoid duplicate "Available authorizations" in Swagger UI.
+_bearer_scheme = HTTPBearer(scheme_name="bearerAuth", auto_error=False)
 
 
 async def get_current_user_jwt(

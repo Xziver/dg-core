@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     app_port: int = 8000
     app_debug: bool = True
 
+    # Default admin (auto-created on first launch if username is set)
+    default_admin_username: str = ""
+    default_admin_password: str = ""
+    default_admin_email: str | None = None
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     @property

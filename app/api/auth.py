@@ -14,6 +14,7 @@ from app.infra.auth import (
     authenticate_by_password,
     create_access_token,
     generate_api_key,
+    get_current_user,
     get_current_user_jwt,
     hash_password,
     resolve_user_by_platform,
@@ -109,9 +110,14 @@ async def register(
 @router.post("/login/platform")
 async def login_by_platform(
     req: PlatformLoginRequest,
+    _caller: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
-    """Login via platform identity (used by bot middleware)."""
+    """Login via platform identity (used by bot middleware).
+
+    Requires authentication (API Key or JWT) — only trusted bot services
+    should call this endpoint, since it grants a JWT for the platform user.
+    """
     user = await resolve_user_by_platform(db, req.platform, req.platform_uid)
     if user is None:
         raise HTTPException(status_code=404, detail="No user bound to this platform identity")
